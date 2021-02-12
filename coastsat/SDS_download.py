@@ -357,95 +357,97 @@ def retrieve_training_images(inputs):
         all_names = []
         im_epsg = []
 
-        ## least cloudy is first image
-        im_meta = im_dict_T1[satname][0]
+        for i in range(15):
 
-        cloudy = im_meta['properties']['CLOUDY_PIXEL_PERCENTAGE']
-        print(f'    cloud: {cloudy:f3.2}%')
+            ## least cloudy is first image
+            im_meta = im_dict_T1[satname][i]
 
-        # get time of acquisition (UNIX time) and convert to datetime
-        t = im_meta['properties']['system:time_start']
-        im_timestamp = datetime.fromtimestamp(t / 1000, tz=pytz.utc)
-        im_date = im_timestamp.strftime('%Y-%m-%d-%H-%M-%S')
+            print(f'    date : {im_meta["properties"]["DATATAKE_IDENTIFIER"][5:13]}')
+            print(f'    cloud: {im_meta["properties"]["CLOUDY_PIXEL_PERCENTAGE"]:3.1f}%')
 
-        # get epsg code
-        im_epsg.append(int(im_meta['bands'][0]['crs'][5:]))
+            # get time of acquisition (UNIX time) and convert to datetime
+            t = im_meta['properties']['system:time_start']
+            im_timestamp = datetime.fromtimestamp(t / 1000, tz=pytz.utc)
+            im_date = im_timestamp.strftime('%Y-%m-%d-%H-%M-%S')
 
-        # Sentinel-2 products don't provide a georeferencing accuracy (RMSE as in Landsat)
-        # but they have a flag indicating if the geometric quality control was passed or failed
-        # if passed a value of 1 is stored if failed a value of -1 is stored in the metadata
-        # the name of the property containing the flag changes across the S2 archive
-        # check which flag name is used for the image and store the 1/-1 for acc_georef
-        flag_names = ['GEOMETRIC_QUALITY_FLAG', 'GEOMETRIC_QUALITY', 'quality_check']
-        for key in flag_names:
-            if key in im_meta['properties'].keys(): break
-        if im_meta['properties'][key] == 'PASSED':
-            acc_georef = 1
-        else:
-            acc_georef = -1
+            # get epsg code
+            im_epsg.append(int(im_meta['bands'][0]['crs'][5:]))
 
-        georef_accs.append(acc_georef)
+            # Sentinel-2 products don't provide a georeferencing accuracy (RMSE as in Landsat)
+            # but they have a flag indicating if the geometric quality control was passed or failed
+            # if passed a value of 1 is stored if failed a value of -1 is stored in the metadata
+            # the name of the property containing the flag changes across the S2 archive
+            # check which flag name is used for the image and store the 1/-1 for acc_georef
+            flag_names = ['GEOMETRIC_QUALITY_FLAG', 'GEOMETRIC_QUALITY', 'quality_check']
+            for key in flag_names:
+                if key in im_meta['properties'].keys(): break
+            if im_meta['properties'][key] == 'PASSED':
+                acc_georef = 1
+            else:
+                acc_georef = -1
 
-        bands = {}
-        im_fn = {}
+            georef_accs.append(acc_georef)
 
-        # first delete dimensions key from dictionnary
-        # otherwise the entire image is extracted (don't know why)
-        im_bands = im_meta['bands']
-        for j in range(len(im_bands)):
-            del im_bands[j]['dimensions']
+            bands = {}
+            im_fn = {}
 
-        bands['10m'] = [im_bands[1], im_bands[2], im_bands[3], im_bands[7]]  # multispectral bands
-        bands['20m'] = [im_bands[11]]  # SWIR band
-        bands['60m'] = [im_bands[15]]  # QA band
+            # first delete dimensions key from dictionnary
+            # otherwise the entire image is extracted (don't know why)
+            im_bands = im_meta['bands']
+            for j in range(len(im_bands)):
+                del im_bands[j]['dimensions']
 
-        for key in bands.keys():
-            im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + suffix
+            bands['10m'] = [im_bands[1], im_bands[2], im_bands[3], im_bands[7]]  # multispectral bands
+            bands['20m'] = [im_bands[11]]  # SWIR band
+            bands['60m'] = [im_bands[15]]  # QA band
 
-        # check for 2 or 3 images taken on the same date
-        # and add 'dup' or 'tri' to the name respectively
-        if any(im_fn['10m'] in _ for _ in all_names):
             for key in bands.keys():
-                im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_dup' + suffix
+                im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + suffix
 
-            if im_fn['10m'] in all_names:
+            # check for 2 or 3 images taken on the same date
+            # and add 'dup' or 'tri' to the name respectively
+            if any(im_fn['10m'] in _ for _ in all_names):
                 for key in bands.keys():
-                    im_fn[key] = im_date + '_' + satname + '_' + inputs[
-                        'sitename'] + '_' + key + '_tri' + suffix
+                    im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_dup' + suffix
 
-        all_names.append(im_fn['10m'])
-        filenames.append(im_fn['10m'])
+                if im_fn['10m'] in all_names:
+                    for key in bands.keys():
+                        im_fn[key] = im_date + '_' + satname + '_' + inputs[
+                            'sitename'] + '_' + key + '_tri' + suffix
 
-        # download .tif from EE (multispectral bands at 3 different resolutions)
-        while True:
-            try:
-                im_ee = ee.Image(im_meta['id'])
-                local_data_10m = download_tif(im_ee, inputs['polygon'], bands['10m'], filepaths[1])
-                local_data_20m = download_tif(im_ee, inputs['polygon'], bands['20m'], filepaths[2])
-                local_data_60m = download_tif(im_ee, inputs['polygon'], bands['60m'], filepaths[3])
-                break
-            except:
-                continue
-        # rename the files as the image is downloaded as 'data.tif'
-        try:  # 10m
-            os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[1], im_fn['10m']))
-            os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
-        try:  # 20m
-            os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[2], im_fn['20m']))
-            os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
-        try:  # 60m
-            os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[3], im_fn['60m']))
-            os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
-        # metadata for .txt file
-        filename_txt = im_fn['10m'].replace('_10m', '').replace('.tif', '')
-        metadict = {'filename': im_fn['10m'], 'acc_georef': georef_accs[0],
-                    'epsg': im_epsg[0]}
+            all_names.append(im_fn['10m'])
+            filenames.append(im_fn['10m'])
+
+            # download .tif from EE (multispectral bands at 3 different resolutions)
+            while True:
+                try:
+                    im_ee = ee.Image(im_meta['id'])
+                    local_data_10m = download_tif(im_ee, inputs['polygon'], bands['10m'], filepaths[1])
+                    local_data_20m = download_tif(im_ee, inputs['polygon'], bands['20m'], filepaths[2])
+                    local_data_60m = download_tif(im_ee, inputs['polygon'], bands['60m'], filepaths[3])
+                    break
+                except:
+                    continue
+            # rename the files as the image is downloaded as 'data.tif'
+            try:  # 10m
+                os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
+            except:  # overwrite if already exists
+                os.remove(os.path.join(filepaths[1], im_fn['10m']))
+                os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
+            try:  # 20m
+                os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
+            except:  # overwrite if already exists
+                os.remove(os.path.join(filepaths[2], im_fn['20m']))
+                os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
+            try:  # 60m
+                os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
+            except:  # overwrite if already exists
+                os.remove(os.path.join(filepaths[3], im_fn['60m']))
+                os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
+            # metadata for .txt file
+            filename_txt = im_fn['10m'].replace('_10m', '').replace('.tif', '')
+            metadict = {'filename': im_fn['10m'], 'acc_georef': georef_accs[i],
+                        'epsg': im_epsg[i]}
 
         # write metadata
         with open(os.path.join(filepaths[0], filename_txt + '.txt'), 'w') as f:
