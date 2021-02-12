@@ -401,10 +401,12 @@ def check_images_available(inputs):
         # get list of images in EE collection
         while True:
             try:
+
                 ee_col = ee.ImageCollection(col_names_T1[satname])
                 col = ee_col.filterBounds(ee.Geometry.Polygon(inputs['polygon']))\
                             .filterDate(inputs['dates'][0],inputs['dates'][1])
                 im_list = col.getInfo().get('features')
+
                 break
             except:
                 continue

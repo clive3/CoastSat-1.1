@@ -1,0 +1,3 @@
+filename	2019-03-03-14-26-45_L8_Mayreau_pan.tif
+acc_georef	6.340000152587891
+epsg	32620

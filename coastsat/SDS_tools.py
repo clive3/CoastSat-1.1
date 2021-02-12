@@ -565,11 +565,14 @@ def polygon_from_kml(fn):
     str1 = '<coordinates>'
     str2 = '</coordinates>'
     subdoc = doc[doc.find(str1)+len(str1):doc.find(str2)]
-    coordlist = subdoc.split('\n')
+    coordlist = subdoc.split(',')
     # read coordinates
     polygon = []
-    for i in range(1,len(coordlist)-1):
-        polygon.append([float(coordlist[i].split(',')[0]), float(coordlist[i].split(',')[1])])
+    for coord_pair in range(int(len(coordlist)/2)):
+        lat = float(coordlist[coord_pair*2].replace('0 ', ''))
+        lon = float(coordlist[coord_pair*2+1].replace('0 ', ''))
+        polygon.append([lat, lon])
+
         
     return [polygon]
 

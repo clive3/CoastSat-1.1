@@ -1,0 +1,3 @@
+filename	2019-04-28-23-43-07_L8_NEWCASTLE_pan.tif
+acc_georef	5.2270002365112305
+epsg	32656

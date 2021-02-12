@@ -1,0 +1,3 @@
+filename	2019-05-30-23-42-38_L8_SAWTELL_pan.tif
+acc_georef	4.579999923706055
+epsg	32656

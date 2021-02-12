@@ -1,0 +1,3 @@
+filename	2019-01-31-23-36-06_L8_BYRON_pan.tif
+acc_georef	8.350000381469727
+epsg	32656
