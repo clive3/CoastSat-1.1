@@ -128,5 +128,5 @@ dmypy.json
 .pyre/
 
 #data directory
-/data
-/classification/
+data/
+classification/
