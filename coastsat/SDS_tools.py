@@ -60,7 +60,8 @@ def convert_pix2world(points, georef):
             points_converted.append(tform(tmp))
           
     # if single array
-    elif type(points) is np.ndarray:
+#    elif type(points) is np.ndarray:
+    elif True:
         tmp = points[:,[1,0]]
         points_converted = tform(tmp)
         
