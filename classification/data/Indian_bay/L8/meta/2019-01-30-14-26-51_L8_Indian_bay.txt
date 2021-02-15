@@ -1,3 +1,0 @@
-filename	2019-01-30-14-26-51_L8_Indian_bay_pan.tif
-acc_georef	5.432000160217285
-epsg	32620
