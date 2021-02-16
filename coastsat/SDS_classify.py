@@ -574,6 +574,7 @@ def evaluate_classifier(classifier, metadata, settings):
             # there are two options to map the contours:
             # if there are pixels in the 'sand' class --> use find_wl_contours2 (enhanced)
             # otherwise use find_wl_contours2 (traditional)
+            """
             try: # use try/except structure for long runs
                 if sum(sum(im_labels[:,:,0])) < 10 :
                     # compute MNDWI image (SWIR-G)
@@ -595,7 +596,7 @@ def evaluate_classifier(classifier, metadata, settings):
                                                                             image_epsg)[:,[0,1]], georef)
             except:
                 # if try fails, just add nan into the shoreline vector so the next parts can still run
-                sl_pix = np.array([[np.nan, np.nan],[np.nan, np.nan]])
+                sl_pix = np.array([[np.nan, np.nan],[np.nan, np.nan]])"""
             # make a plot
             im_RGB = SDS_preprocess.rescale_image_intensity(im_ms[:,:,[2,1,0]], cloud_mask, 99.9)
             # create classified image
@@ -612,8 +613,8 @@ def evaluate_classifier(classifier, metadata, settings):
             ax[1].axis('off')
             filename = filenames[i][:filenames[i].find('.')][:-4] 
             ax[0].set_title(filename)  
-            ax[0].plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
-            ax[1].plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
+#            ax[0].plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
+#            ax[1].plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
             # save figure
             fig.savefig(os.path.join(fp,settings['inputs']['sitename'] + filename[:19] +'.jpg'), dpi=150)
             # clear axes
