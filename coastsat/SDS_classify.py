@@ -426,7 +426,7 @@ def format_training_data(features, classes, labels):
         vector with the labels corresponding to each row of X
     
     """
-    
+
     # initialize X and y
     X = np.nan*np.ones((1,features[classes[0]].shape[1]))
     y = np.nan*np.ones((1,1))
@@ -483,7 +483,7 @@ def plot_confusion_matrix(y_true,y_pred,classes,normalize=False,cmap=plt.cm.Blue
     fig.tight_layout()
     return ax
 
-def evaluate_classifier(classifier, metadata, settings):
+def evaluate_classifier(classifier, metadata, settings, base_path):
     """
     Apply the image classifier to all the images and save the classified images.
 
@@ -522,7 +522,7 @@ def evaluate_classifier(classifier, metadata, settings):
     """  
     
     # create folder called evaluation
-    fp = os.path.join(os.getcwd(), 'evaluation')
+    fp = os.path.join(base_path, 'evaluation')
     if not os.path.exists(fp):
         os.makedirs(fp)
         
@@ -531,13 +531,16 @@ def evaluate_classifier(classifier, metadata, settings):
     fig,ax = plt.subplots(1,2,figsize=[17,10],sharex=True, sharey=True,
                           constrained_layout=True)
 
+
     # create colormap for labels
     cmap = cm.get_cmap('tab20c')
     colorpalette = cmap(np.arange(0,13,1))
-    colours = np.zeros((3,4))
-    colours[0,:] = colorpalette[5]
-    colours[1,:] = np.array([204/255,1,1,1])
-    colours[2,:] = np.array([0,91/255,1,1])
+    colours = np.zeros((4,4))
+    colours[0,:] = np.array([1,0,0,1])
+    colours[1,:] = np.array([0,1,0,1])
+    colours[2,:] = np.array([1,0,1,1])
+    colours[3,:] = np.array([0, 91 / 255, 1, 1])
+
     # loop through satellites
     for satname in metadata.keys():
         filepath = SDS_tools.get_filepath(settings['inputs'],satname)
@@ -549,7 +552,7 @@ def evaluate_classifier(classifier, metadata, settings):
         elif satname == 'S2':
             pixel_size = 10
         # convert settings['min_beach_area'] and settings['buffer_size'] from metres to pixels
-        buffer_size_pixels = np.ceil(settings['buffer_size']/pixel_size)
+
         min_beach_area_pixels = np.ceil(settings['min_beach_area']/pixel_size**2)
         
         # loop through images
@@ -558,63 +561,36 @@ def evaluate_classifier(classifier, metadata, settings):
             fn = SDS_tools.get_filenames(filenames[i],filepath, satname)
             # read and preprocess image
             im_ms, georef, cloud_mask, im_extra, im_QA, im_nodata = SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
-            image_epsg = metadata[satname]['epsg'][i]
+
             # calculate cloud cover
             cloud_cover = np.divide(sum(sum(cloud_mask.astype(int))),
                                     (cloud_mask.shape[0]*cloud_mask.shape[1]))
             # skip image if cloud cover is above threshold
             if cloud_cover > settings['cloud_thresh']:
                 continue
-            # calculate a buffer around the reference shoreline (if any has been digitised)
-            im_ref_buffer = SDS_shoreline.create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
-                                                    pixel_size, settings)
+
             # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
-            im_classif, im_labels = SDS_shoreline.classify_image_NN(im_ms, im_extra, cloud_mask,
+            im_classif, im_labels = SDS_shoreline.classify_image_NN2(im_ms, cloud_mask,
                                     min_beach_area_pixels, classifier)
-            # there are two options to map the contours:
-            # if there are pixels in the 'sand' class --> use find_wl_contours2 (enhanced)
-            # otherwise use find_wl_contours2 (traditional)
-            """
-            try: # use try/except structure for long runs
-                if sum(sum(im_labels[:,:,0])) < 10 :
-                    # compute MNDWI image (SWIR-G)
-                    im_mndwi = SDS_tools.nd_index(im_ms[:,:,4], im_ms[:,:,1], cloud_mask)
-                    # find water contours on MNDWI grayscale image
-                    contours_mwi = SDS_shoreline.find_wl_contours1(im_mndwi, cloud_mask, im_ref_buffer)
-                else:
-                    # use classification to refine threshold and extract the sand/water interface
-                    contours_wi, contours_mwi = SDS_shoreline.find_wl_contours2(im_ms, im_labels,
-                                                cloud_mask, buffer_size_pixels, im_ref_buffer)
-            except:
-                print('Could not map shoreline for this image: ' + filenames[i])
-                continue
-            # process the water contours into a shoreline
-            shoreline = SDS_shoreline.process_shoreline(contours_mwi, cloud_mask, georef, image_epsg, settings)
-            try:
-                sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
-                                                                            settings['output_epsg'],
-                                                                            image_epsg)[:,[0,1]], georef)
-            except:
-                # if try fails, just add nan into the shoreline vector so the next parts can still run
-                sl_pix = np.array([[np.nan, np.nan],[np.nan, np.nan]])"""
+
             # make a plot
             im_RGB = SDS_preprocess.rescale_image_intensity(im_ms[:,:,[2,1,0]], cloud_mask, 99.9)
             # create classified image
             im_class = np.copy(im_RGB)
+
             for k in range(0,im_labels.shape[2]):
                 im_class[im_labels[:,:,k],0] = colours[k,0]
                 im_class[im_labels[:,:,k],1] = colours[k,1]
-                im_class[im_labels[:,:,k],2] = colours[k,2]        
+                im_class[im_labels[:,:,k],2] = colours[k,2]
+
             # show images
             ax[0].imshow(im_RGB)
-            ax[1].imshow(im_RGB)
-            ax[1].imshow(im_class, alpha=0.5)
+#            ax[1].imshow(im_RGB)
+            ax[1].imshow(im_class, alpha=0.75)
             ax[0].axis('off')
             ax[1].axis('off')
             filename = filenames[i][:filenames[i].find('.')][:-4] 
-            ax[0].set_title(filename)  
-#            ax[0].plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
-#            ax[1].plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
+            ax[0].set_title(filename)
             # save figure
             fig.savefig(os.path.join(fp,settings['inputs']['sitename'] + filename[:19] +'.jpg'), dpi=150)
             # clear axes
