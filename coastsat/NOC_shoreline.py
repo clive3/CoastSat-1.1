@@ -294,6 +294,7 @@ def extract_shorelines(metadata, settings):
         output_cloudcover = []  # cloud cover of the images
         output_geoaccuracy = []  # georeferencing accuracy of the images
         output_idxkeep = []  # index that were kept during the analysis (cloudy images are skipped)
+        output_median_no = []
 
         # load classifiers
         if satname in ['L5', 'L7', 'L8']:
@@ -366,6 +367,7 @@ def extract_shorelines(metadata, settings):
             output_cloudcover.append(cloud_cover)
             output_geoaccuracy.append(metadata[satname]['acc_georef'][i])
             output_idxkeep.append(i)
+            output_median_no.append(metadata[satname]['median_no'][i])
 
         # create dictionnary of output
         output[satname] = {
@@ -374,7 +376,8 @@ def extract_shorelines(metadata, settings):
             'filename': output_filename,
             'cloud_cover': output_cloudcover,
             'geoaccuracy': output_geoaccuracy,
-            'idx': output_idxkeep
+            'idx': output_idxkeep,
+            'median_no': output_median_no
         }
         print('')
 
