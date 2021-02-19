@@ -871,7 +871,7 @@ def retrieve_median_image(settings):
 
         ##Extract band metadata and define those to download
         metadata = median_img.getInfo()
-        im_bands = metadata['bands']
+#        im_bands = metadata['bands']
 
         bands = dict([])
         bands[''] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
@@ -1435,6 +1435,73 @@ def retrieve_training_images(inputs):
 
     # save metadata dict
     with open(os.path.join(im_folder, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
+        pickle.dump(metadata, f)
+
+    return metadata
+
+
+# function to load the metadata if images have already been downloaded
+def get_metadata(inputs):
+    """
+    Gets the metadata from the downloaded images by parsing .txt files located
+    in the \meta subfolder.
+
+    KV WRL 2018
+
+    Arguments:
+    -----------
+    inputs: dict with the following fields
+        'sitename': str
+            name of the site
+        'filepath_data': str
+            filepath to the directory where the images are downloaded
+
+    Returns:
+    -----------
+    metadata: dict
+        contains the information about the satellite images that were downloaded:
+        date, filename, georeferencing accuracy and image coordinate reference system
+
+    """
+    # directory containing the images
+    filepath = os.path.join(inputs['filepath'],inputs['sitename'])
+
+    # initialize metadata dict
+    metadata = dict([])
+    # loop through the satellite missions
+    for satname in ['L5','L7','L8','S2']:
+        # if a folder has been created for the given satellite mission
+        if satname in os.listdir(filepath):
+            # update the metadata dict
+            metadata[satname] = {'filenames':[], 'acc_georef':[], 'epsg':[], 'dates':[], 'median_no':[]}
+            # directory where the metadata .txt files are stored
+            filepath_meta = os.path.join(filepath, satname, 'meta')
+            # get the list of filenames and sort it chronologically
+            filenames_meta = os.listdir(filepath_meta)
+            filenames_meta.sort()
+            # loop through the .txt files
+            for im_meta in filenames_meta:
+
+                # read them and extract the metadata info: filename, georeferencing accuracy
+                # epsg code and date
+                with open(os.path.join(filepath_meta, im_meta), 'r') as f:
+                    filename = f.readline().split('\t')[1].replace('\n','')
+                    acc_georef = float(f.readline().split('\t')[1].replace('\n',''))
+                    epsg = int(f.readline().split('\t')[1].replace('\n',''))
+                    median_no = int(f.readline().split('\t')[1].replace('\n', ''))
+                date_str = filename[0:19]
+                date = pytz.utc.localize(datetime(int(date_str[:4]),int(date_str[5:7]),
+                                                  int(date_str[8:10]),int(date_str[11:13]),
+                                                  int(date_str[14:16]),int(date_str[17:19])))
+                # store the information in the metadata dict
+                metadata[satname]['filenames'].append(filename)
+                metadata[satname]['acc_georef'].append(acc_georef)
+                metadata[satname]['epsg'].append(epsg)
+                metadata[satname]['dates'].append(date)
+                metadata[satname]['median_no'].append(median_no)
+
+    # save a .pkl file containing the metadata dict
+    with open(os.path.join(filepath, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
         pickle.dump(metadata, f)
 
     return metadata
