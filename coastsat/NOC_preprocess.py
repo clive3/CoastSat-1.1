@@ -9,4 +9,3 @@ def preprocess_sar(file_name, satname):
     sar_stack = np.stack(bands, 2)
 
     return sar_stack, georef
-

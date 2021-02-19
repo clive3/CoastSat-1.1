@@ -414,7 +414,7 @@ def extract_sar_shorelines(metadata, settings):
     print('Mapping shorelines:')
 
     # get images
-    filepath = NOC_tools.get_filepath(settings['inputs'], satname)
+    data_path = NOC_tools.get_filepath(settings['inputs'], satname)
     filenames = metadata[satname]['filenames']
 
     # initialise the output variables
@@ -433,7 +433,9 @@ def extract_sar_shorelines(metadata, settings):
         # get image filename
         filename = filenames[i]
 
-        sar_image, georef = NOC_preprocess.preprocess_sar(filename, satname)
+        file_path = os.path.join(data_path, filename)
+
+        sar_image, georef = NOC_preprocess.preprocess_sar(file_path, satname)
 
         # get image spatial reference system (epsg code) from metadata dict
         image_epsg = metadata[satname]['epsg'][i]
