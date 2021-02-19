@@ -208,8 +208,6 @@ def find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, buffer_size, im_ref
     t_mwi = filters.threshold_otsu(int_all[:,0])
 
     # find contour with MS algorithm
-    im_wi_buffer = np.copy(im_wi)
-    im_wi_buffer[~im_ref_buffer] = np.nan
     im_mwi_buffer = np.copy(im_mwi)
     im_mwi_buffer[~im_ref_buffer] = np.nan
     contours_mwi = measure.find_contours(im_mwi_buffer, t_mwi)
@@ -394,6 +392,120 @@ def extract_shorelines(metadata, settings):
 
     return output
 
+
+# Main function for batch shoreline detection
+def extract_sar_shorelines(metadata, settings):
+
+
+    sitename = settings['inputs']['sitename']
+    filepath_data = settings['inputs']['filepath']
+
+    # initialise output structure
+    output = {}
+    # create a subfolder to store the .jpg images showing the detection
+    filepath_jpg = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
+    if not os.path.exists(filepath_jpg):
+        os.makedirs(filepath_jpg)
+    # close all open figures
+    plt.close('all')
+
+    print('Mapping shorelines:')
+
+    # loop through satellite list
+    for satname in metadata.keys():
+
+        # get images
+        filepath = SDS_tools.get_filepath(settings['inputs'], satname)
+        filenames = metadata[satname]['filenames']
+
+        # initialise the output variables
+        output_timestamp = []  # datetime at which the image was acquired (UTC time)
+        output_shoreline = []  # vector of shoreline points
+        output_filename = []  # filename of the images from which the shorelines where derived
+        output_geoaccuracy = []  # georeferencing accuracy of the images
+        output_median_no = []
+
+
+        # loop through the images
+        for i in range(len(filenames)):
+
+            print('\r%s:   %d%%' % (satname, int(((i + 1) / len(filenames)) * 100)))
+            print()
+
+            # get image filename
+            fn = SDS_tools.get_filenames(filenames[i], filepath, satname)
+            # preprocess image (cloud mask + pansharpening/downsampling)
+
+            im_ms, georef, cloud_mask, im_extra, im_QA, im_nodata = \
+                SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
+            # get image spatial reference system (epsg code) from metadata dict
+            image_epsg = metadata[satname]['epsg'][i]
+
+            # compute cloud_cover percentage (with no data pixels)
+            cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
+                                             (cloud_mask.shape[0] * cloud_mask.shape[1]))
+            if cloud_cover_combined > 0.99:  # if 99% of cloudy pixels in image skip
+                continue
+            # remove no data pixels from the cloud mask
+            # (for example L7 bands of no data should not be accounted for)
+            cloud_mask_adv = np.logical_xor(cloud_mask, im_nodata)
+            # compute updated cloud cover percentage (without no data pixels)
+            cloud_cover = np.divide(sum(sum(cloud_mask_adv.astype(int))),
+                                    (cloud_mask.shape[0] * cloud_mask.shape[1]))
+            # skip image if cloud cover is above user-defined threshold
+            if cloud_cover > settings['cloud_thresh']:
+                continue
+
+            # calculate a buffer around the reference shoreline (if any has been digitised)
+            im_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
+                                                    pixel_size, settings)
+
+            # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
+            im_classif, im_labels = classify_image_NN_5classes(im_ms, cloud_mask,
+                                                      min_beach_area_pixels, clf)
+
+            # find the shoreline interactively
+            date = filenames[i][:19]
+            skip_image, shoreline = adjust_detection_5classes(im_ms, cloud_mask, im_labels,
+                                                     im_ref_buffer, image_epsg, georef, settings, date,
+                                                     satname, buffer_size_pixels)
+            # if the user decides to skip the image, continue and do not save the mapped shoreline
+            if skip_image:
+                continue
+
+            # append to output variables
+            output_timestamp.append(metadata[satname]['dates'][i])
+            output_shoreline.append(shoreline)
+            output_filename.append(filenames[i])
+            output_cloudcover.append(cloud_cover)
+            output_geoaccuracy.append(metadata[satname]['acc_georef'][i])
+            output_idxkeep.append(i)
+            output_median_no.append(metadata[satname]['median_no'][i])
+
+        # create dictionnary of output
+        output[satname] = {
+            'dates': output_timestamp,
+            'shorelines': output_shoreline,
+            'filename': output_filename,
+            'cloud_cover': output_cloudcover,
+            'geoaccuracy': output_geoaccuracy,
+            'idx': output_idxkeep,
+            'median_no': output_median_no
+        }
+        print('')
+
+    # close figure window if still open
+    if plt.get_fignums():
+        plt.close()
+
+    output = SDS_tools.merge_output(output)
+
+    # save outputput structure as output.pkl
+    filepath = os.path.join(filepath_data, sitename)
+    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
+        pickle.dump(output, f)
+
+    return output
 
 
 def show_detection_4classes(im_ms, cloud_mask, im_labels, shoreline,image_epsg, georef,
@@ -1221,11 +1333,11 @@ def adjust_detection_5classes(im_ms, cloud_mask, im_labels, im_ref_buffer, image
         contours_mndwi, t_mndwi = find_wl_contours2_5classes(im_ms, im_labels, cloud_mask,
                                                     buffer_size_pixels, im_ref_buffer)
     else:
-        print('not enough sand pixels ... using altyernative algorithm for shoreline')
+        print('not enough sand pixels ... using alternative algorithm for shoreline')
         # find water contours on MNDWI grayscale image
         contours_mndwi, t_mndwi = find_wl_contours1(im_mndwi, cloud_mask, im_ref_buffer)
 
-        # process the water contours into a shoreline
+    # process the water contours into a shoreline
     shoreline = process_shoreline(contours_mndwi, cloud_mask, georef, image_epsg, settings)
     # convert shoreline to pixels
     if len(shoreline) > 0:

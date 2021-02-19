@@ -1,6 +1,130 @@
 from coastsat.SDS_download import *
 
 
+def retrieve_median_sar(inputs):
+
+    suffix = '.tif'
+
+    # check if dates are in correct order
+    dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
+    if dates[1] <= dates[0]:
+        raise Exception('Verify that your dates are in the correct order')
+
+    im_date = str(dates[0])
+    im_date = im_date.replace(' ', '-')
+    im_date = im_date.replace(':', '-')
+
+    # create a new directory for this site with the name of the site
+    im_folder = os.path.join(inputs['filepath'], inputs['sitename'])
+    if not os.path.exists(im_folder): os.makedirs(im_folder)
+
+    # create subfolder structure to store the different polarisations
+    filepaths = create_folder_structure(im_folder, 'S1')
+
+    print('\nDownloading images:')
+
+    # initialise connection with GEE server
+    ee.Initialize()
+
+    median_vv_img = ee.ImageCollection("COPERNICUS/S1_GRD") \
+                      .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
+                      .filterDate(dates[0], dates[1]) \
+                      .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                      .select('VV') \
+                      .median()
+
+    median_vh_img = ee.ImageCollection("COPERNICUS/S1_GRD") \
+                      .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
+                      .filterDate(dates[0], dates[1]) \
+                      .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                      .select('VH') \
+                      .median()
+
+#    images = ee.ImageCollection("COPERNICUS/S1_GRD") \
+#               .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
+#               .filterDate(dates[0], dates[1])
+
+#    img_list = images.toList()
+#    median_no = len(img_list.getInfo())
+    median_no = 65
+
+    print('Median processed')
+
+    metadata = median_vv_img.getInfo()
+
+    bands = {}
+    bands['VV'] = ['VV']
+    bands['VH'] = ['VH']
+
+    image_filename = {}
+
+    for key in bands.keys():
+        image_filename[key] = im_date + '_S1_' + inputs['sitename'] + '_median_' + key + suffix
+
+    # download .tif from EE
+    get_sar_url('data', median_vv_img, ee.Number(10), inputs['polygon'], filepaths[1], bands['VV'])
+    get_sar_url('data', median_vh_img, ee.Number(10), inputs['polygon'], filepaths[2], bands['VH'])
+
+    print('Downloaded')
+
+    # rename the file as the image is downloaded as 'data.tif'
+    # locate download
+    local_data_vv = filepaths[1] + '\data.tif'
+    local_data_vh = filepaths[2] + '\data.tif'
+
+    try:
+        os.rename(local_data_vv, os.path.join(filepaths[1], image_filename['VV']))
+    except:  # overwrite if already exists
+        os.remove(os.path.join(filepaths[1], image_filename['VV']))
+        os.rename(local_data_vv, os.path.join(filepaths[1], image_filename['VV']))
+
+    try:
+        os.rename(local_data_vh, os.path.join(filepaths[2], image_filename['VH']))
+    except:  # overwrite if already exists
+        os.remove(os.path.join(filepaths[2], image_filename['VH']))
+        os.rename(local_data_vh, os.path.join(filepaths[2], image_filename['VH']))
+
+
+    # metadata for .txt file
+    filename_txt = image_filename['VV'].replace('_VV', '').replace('tif', 'txt')
+    metadict = {'filename': image_filename['VV'],
+                'acc_georef': 1,
+                'epsg': metadata['bands'][0]['crs'][5:],
+                'median_no': median_no}
+
+
+    # write metadata
+    with open(os.path.join(filepaths[0], filename_txt), 'w') as f:
+        for key in metadict.keys():
+            f.write('%s\t%s\n' % (key, metadict[key]))
+    print('')
+
+
+    # once all images have been downloaded, load metadata from .txt files
+    metadata = get_metadata(inputs)
+
+    # save metadata dict
+    with open(os.path.join(im_folder, inputs['sitename'] + '_metadata_S1' + '.pkl'), 'wb') as f:
+        pickle.dump(metadata, f)
+
+    return metadata
+
+
+def get_sar_url(name, image, scale, region, filepath, bands):
+
+    path = image.getDownloadURL({
+        'name': 'data',
+        'scale': scale,
+        'region': region,
+        'filePerBand': False,
+        'bands': bands
+    })
+
+    local_zip, headers = urlretrieve(path)
+    with zipfile.ZipFile(local_zip) as local_zipfile:
+        return local_zipfile.extractall(path=str(filepath))
+
+
 def retrieve_images(inputs):
     """
     Downloads all images from Landsat 5, Landsat 7, Landsat 8 and Sentinel-2
@@ -1465,11 +1589,12 @@ def get_metadata(inputs):
     """
     # directory containing the images
     filepath = os.path.join(inputs['filepath'],inputs['sitename'])
+ #   satname = inputs['satlist'][0]
 
     # initialize metadata dict
     metadata = dict([])
     # loop through the satellite missions
-    for satname in ['L5','L7','L8','S2']:
+    for satname in ['L5','L7','L8','S2','S1']:
         # if a folder has been created for the given satellite mission
         if satname in os.listdir(filepath):
             # update the metadata dict
@@ -1634,3 +1759,49 @@ def time_in_range(start, end, x):
         return start <= x <= end
     else:
         return start <= x or x <= end
+
+
+def create_folder_structure(im_folder, satname):
+    """
+    Create the structure of subfolders for each satellite mission
+
+    KV WRL 2018
+
+    Arguments:
+    -----------
+    im_folder: str
+        folder where the images are to be downloaded
+    satname:
+        name of the satellite mission
+
+    Returns:
+    -----------
+    filepaths: list of str
+        filepaths of the folders that were created
+    """
+    # one folder for the metadata (common to all satellites)
+    filepaths = [os.path.join(im_folder, satname, 'meta')]
+
+    if satname == 'S1':
+
+        filepaths.append(os.path.join(im_folder, satname, 'VV'))
+        filepaths.append(os.path.join(im_folder, satname, 'VH'))
+
+    else:
+
+        # subfolders depending on satellite mission
+        if satname == 'L5':
+            filepaths.append(os.path.join(im_folder, satname, '30m'))
+        elif satname in ['L7','L8']:
+            filepaths.append(os.path.join(im_folder, satname, 'pan'))
+            filepaths.append(os.path.join(im_folder, satname, 'ms'))
+        elif satname in ['S2']:
+            filepaths.append(os.path.join(im_folder, satname, '10m'))
+            filepaths.append(os.path.join(im_folder, satname, '20m'))
+            filepaths.append(os.path.join(im_folder, satname, '60m'))
+
+    # create the sub-folders if they don't exist already
+    for fp in filepaths:
+        if not os.path.exists(fp): os.makedirs(fp)
+
+    return filepaths
