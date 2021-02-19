@@ -87,3 +87,74 @@ def output_to_gdf(output):
 
     return gdf_all
 
+
+def get_filepath(inputs, satname):
+    """
+    Create filepath to the different folders containing the satellite images.
+
+    KV WRL 2018
+
+    Arguments:
+    -----------
+    inputs: dict with the following keys
+        'sitename': str
+            name of the site
+        'polygon': list
+            polygon containing the lon/lat coordinates to be extracted,
+            longitudes in the first column and latitudes in the second column,
+            there are 5 pairs of lat/lon with the fifth point equal to the first point:
+            ```
+            polygon = [[[151.3, -33.7],[151.4, -33.7],[151.4, -33.8],[151.3, -33.8],
+            [151.3, -33.7]]]
+            ```
+        'dates': list of str
+            list that contains 2 strings with the initial and final dates in
+            format 'yyyy-mm-dd':
+            ```
+            dates = ['1987-01-01', '2018-01-01']
+            ```
+        'sat_list': list of str
+            list that contains the names of the satellite missions to include:
+            ```
+            sat_list = ['L5', 'L7', 'L8', 'S2']
+            ```
+        'filepath_data': str
+            filepath to the directory where the images are downloaded
+    satname: str
+        short name of the satellite mission ('L5','L7','L8','S2')
+
+    Returns:
+    -----------
+    filepath: str or list of str
+        contains the filepath(s) to the folder(s) containing the satellite images
+
+    """
+
+    sitename = inputs['sitename']
+    filepath_data = inputs['filepath']
+    # access the images
+    if satname == 'L5':
+        # access downloaded Landsat 5 images
+        filepath = os.path.join(filepath_data, sitename, satname, '30m')
+    elif satname == 'L7':
+        # access downloaded Landsat 7 images
+        filepath_pan = os.path.join(filepath_data, sitename, 'L7', 'pan')
+        filepath_ms = os.path.join(filepath_data, sitename, 'L7', 'ms')
+        filepath = [filepath_pan, filepath_ms]
+    elif satname == 'L8':
+        # access downloaded Landsat 8 images
+        filepath_pan = os.path.join(filepath_data, sitename, 'L8', 'pan')
+        filepath_ms = os.path.join(filepath_data, sitename, 'L8', 'ms')
+        filepath = [filepath_pan, filepath_ms]
+    elif satname == 'S2':
+        # access downloaded Sentinel 2 images
+        filepath10 = os.path.join(filepath_data, sitename, satname, '10m')
+        filepath20 = os.path.join(filepath_data, sitename, satname, '20m')
+        filepath60 = os.path.join(filepath_data, sitename, satname, '60m')
+        filepath = [filepath10, filepath20, filepath60]
+
+    elif satname == 'S1':
+        # access downloaded Sentinel 1 images
+        filepath = os.path.join(filepath_data, sitename, satname)
+
+    return filepath

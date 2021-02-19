@@ -5,6 +5,8 @@ def retrieve_median_sar(inputs):
 
     suffix = '.tif'
 
+    pixel_size = inputs['pixel_size']
+
     # check if dates are in correct order
     dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
     if dates[1] <= dates[0]:
@@ -26,20 +28,11 @@ def retrieve_median_sar(inputs):
     # initialise connection with GEE server
     ee.Initialize()
 
-    median_vv_img = ee.ImageCollection("COPERNICUS/S1_GRD") \
-                      .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
-                      .filterDate(dates[0], dates[1]) \
-                      .filter(ee.Filter.eq('instrumentMode', 'IW')) \
-                      .select('VV') \
-                      .median()
-
-    median_vh_img = ee.ImageCollection("COPERNICUS/S1_GRD") \
-                      .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
-                      .filterDate(dates[0], dates[1]) \
-                      .filter(ee.Filter.eq('instrumentMode', 'IW')) \
-                      .select('VH') \
-                      .median()
-
+    median_img = ee.ImageCollection("COPERNICUS/S1_GRD") \
+                   .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
+                   .filterDate(dates[0], dates[1]) \
+                   .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+                   .median()
 #    images = ee.ImageCollection("COPERNICUS/S1_GRD") \
 #               .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
 #               .filterDate(dates[0], dates[1])
@@ -50,55 +43,35 @@ def retrieve_median_sar(inputs):
 
     print('Median processed')
 
-    metadata = median_vv_img.getInfo()
+    metadata = median_img.getInfo()
 
-    bands = {}
-    bands['VV'] = ['VV']
-    bands['VH'] = ['VH']
-
-    image_filename = {}
-
-    for key in bands.keys():
-        image_filename[key] = im_date + '_S1_' + inputs['sitename'] + '_median_' + key + suffix
-
-    # download .tif from EE
-    get_sar_url('data', median_vv_img, ee.Number(10), inputs['polygon'], filepaths[1], bands['VV'])
-    get_sar_url('data', median_vh_img, ee.Number(10), inputs['polygon'], filepaths[2], bands['VH'])
+    median_filename = im_date + '_S1_' + inputs['sitename'] + '_median' + suffix
+    get_sar_url(median_img, ee.Number(pixel_size), inputs['polygon'], filepaths[1])
 
     print('Downloaded')
 
     # rename the file as the image is downloaded as 'data.tif'
     # locate download
-    local_data_vv = filepaths[1] + '\data.tif'
-    local_data_vh = filepaths[2] + '\data.tif'
+    local_data = filepaths[1] + '\data.tif'
 
     try:
-        os.rename(local_data_vv, os.path.join(filepaths[1], image_filename['VV']))
+        os.rename(local_data, os.path.join(filepaths[1], median_filename))
     except:  # overwrite if already exists
-        os.remove(os.path.join(filepaths[1], image_filename['VV']))
-        os.rename(local_data_vv, os.path.join(filepaths[1], image_filename['VV']))
-
-    try:
-        os.rename(local_data_vh, os.path.join(filepaths[2], image_filename['VH']))
-    except:  # overwrite if already exists
-        os.remove(os.path.join(filepaths[2], image_filename['VH']))
-        os.rename(local_data_vh, os.path.join(filepaths[2], image_filename['VH']))
-
+        os.remove(os.path.join(filepaths[1], median_filename))
+        os.rename(local_data, os.path.join(filepaths[1], median_filename))
 
     # metadata for .txt file
-    filename_txt = image_filename['VV'].replace('_VV', '').replace('tif', 'txt')
-    metadict = {'filename': image_filename['VV'],
+    filename_txt = median_filename.replace('tif', 'txt')
+    metadict = {'filename': median_filename,
                 'acc_georef': 1,
                 'epsg': metadata['bands'][0]['crs'][5:],
                 'median_no': median_no}
-
 
     # write metadata
     with open(os.path.join(filepaths[0], filename_txt), 'w') as f:
         for key in metadict.keys():
             f.write('%s\t%s\n' % (key, metadict[key]))
     print('')
-
 
     # once all images have been downloaded, load metadata from .txt files
     metadata = get_metadata(inputs)
@@ -110,14 +83,14 @@ def retrieve_median_sar(inputs):
     return metadata
 
 
-def get_sar_url(name, image, scale, region, filepath, bands):
+def get_sar_url(image, scale, region, filepath):
 
     path = image.getDownloadURL({
         'name': 'data',
         'scale': scale,
         'region': region,
         'filePerBand': False,
-        'bands': bands
+        'bands': ['VV','VH']
     })
 
     local_zip, headers = urlretrieve(path)
@@ -1564,74 +1537,6 @@ def retrieve_training_images(inputs):
     return metadata
 
 
-# function to load the metadata if images have already been downloaded
-def get_metadata(inputs):
-    """
-    Gets the metadata from the downloaded images by parsing .txt files located
-    in the \meta subfolder.
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    inputs: dict with the following fields
-        'sitename': str
-            name of the site
-        'filepath_data': str
-            filepath to the directory where the images are downloaded
-
-    Returns:
-    -----------
-    metadata: dict
-        contains the information about the satellite images that were downloaded:
-        date, filename, georeferencing accuracy and image coordinate reference system
-
-    """
-    # directory containing the images
-    filepath = os.path.join(inputs['filepath'],inputs['sitename'])
- #   satname = inputs['satlist'][0]
-
-    # initialize metadata dict
-    metadata = dict([])
-    # loop through the satellite missions
-    for satname in ['L5','L7','L8','S2','S1']:
-        # if a folder has been created for the given satellite mission
-        if satname in os.listdir(filepath):
-            # update the metadata dict
-            metadata[satname] = {'filenames':[], 'acc_georef':[], 'epsg':[], 'dates':[], 'median_no':[]}
-            # directory where the metadata .txt files are stored
-            filepath_meta = os.path.join(filepath, satname, 'meta')
-            # get the list of filenames and sort it chronologically
-            filenames_meta = os.listdir(filepath_meta)
-            filenames_meta.sort()
-            # loop through the .txt files
-            for im_meta in filenames_meta:
-
-                # read them and extract the metadata info: filename, georeferencing accuracy
-                # epsg code and date
-                with open(os.path.join(filepath_meta, im_meta), 'r') as f:
-                    filename = f.readline().split('\t')[1].replace('\n','')
-                    acc_georef = float(f.readline().split('\t')[1].replace('\n',''))
-                    epsg = int(f.readline().split('\t')[1].replace('\n',''))
-                    median_no = int(f.readline().split('\t')[1].replace('\n', ''))
-                date_str = filename[0:19]
-                date = pytz.utc.localize(datetime(int(date_str[:4]),int(date_str[5:7]),
-                                                  int(date_str[8:10]),int(date_str[11:13]),
-                                                  int(date_str[14:16]),int(date_str[17:19])))
-                # store the information in the metadata dict
-                metadata[satname]['filenames'].append(filename)
-                metadata[satname]['acc_georef'].append(acc_georef)
-                metadata[satname]['epsg'].append(epsg)
-                metadata[satname]['dates'].append(date)
-                metadata[satname]['median_no'].append(median_no)
-
-    # save a .pkl file containing the metadata dict
-    with open(os.path.join(filepath, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
-        pickle.dump(metadata, f)
-
-    return metadata
-
-
 def get_url(name, image, scale, region, filepath, bands):
     """It will open and download automatically a zip folder containing Geotiff data of 'image'.
     If additional parameters are needed, see also:
@@ -1784,8 +1689,9 @@ def create_folder_structure(im_folder, satname):
 
     if satname == 'S1':
 
-        filepaths.append(os.path.join(im_folder, satname, 'VV'))
-        filepaths.append(os.path.join(im_folder, satname, 'VH'))
+#        filepaths.append(os.path.join(im_folder, satname, 'VV'))
+#        filepaths.append(os.path.join(im_folder, satname, 'VH'))
+        filepaths.append(os.path.join(im_folder, satname))
 
     else:
 
@@ -1805,3 +1711,66 @@ def create_folder_structure(im_folder, satname):
         if not os.path.exists(fp): os.makedirs(fp)
 
     return filepaths
+
+def get_metadata(inputs):
+    """
+    Gets the metadata from the downloaded images by parsing .txt files located
+    in the \meta subfolder.
+
+    KV WRL 2018
+
+    Arguments:
+    -----------
+    inputs: dict with the following fields
+        'sitename': str
+            name of the site
+        'filepath_data': str
+            filepath to the directory where the images are downloaded
+
+    Returns:
+    -----------
+    metadata: dict
+        contains the information about the satellite images that were downloaded:
+        date, filename, georeferencing accuracy and image coordinate reference system
+
+    """
+    # directory containing the images
+    filepath = os.path.join(inputs['filepath'],inputs['sitename'])
+    satname = inputs['sat_list'][0]
+
+    # initialize metadata dict
+    metadata = {}
+
+    # if a folder has been created for the given satellite mission
+    if satname in os.listdir(filepath):
+        # update the metadata dict
+        metadata[satname] = {'filenames':[], 'acc_georef':[], 'epsg':[], 'dates':[]}
+        # directory where the metadata .txt files are stored
+        filepath_meta = os.path.join(filepath, satname, 'meta')
+        # get the list of filenames and sort it chronologically
+        filenames_meta = os.listdir(filepath_meta)
+        filenames_meta.sort()
+        # loop through the .txt files
+        for im_meta in filenames_meta:
+
+            # read them and extract the metadata info: filename, georeferencing accuracy
+            # epsg code and date
+            with open(os.path.join(filepath_meta, im_meta), 'r') as f:
+                filename = f.readline().split('\t')[1].replace('\n','')
+                acc_georef = float(f.readline().split('\t')[1].replace('\n',''))
+                epsg = int(f.readline().split('\t')[1].replace('\n',''))
+            date_str = filename[0:19]
+            date = pytz.utc.localize(datetime(int(date_str[:4]),int(date_str[5:7]),
+                                              int(date_str[8:10]),int(date_str[11:13]),
+                                              int(date_str[14:16]),int(date_str[17:19])))
+            # store the information in the metadata dict
+            metadata[satname]['filenames'].append(filename)
+            metadata[satname]['acc_georef'].append(acc_georef)
+            metadata[satname]['epsg'].append(epsg)
+            metadata[satname]['dates'].append(date)
+
+    # save a .pkl file containing the metadata dict
+    with open(os.path.join(filepath, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
+        pickle.dump(metadata, f)
+
+    return metadata
