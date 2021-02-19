@@ -291,179 +291,6 @@ def retrieve_images(inputs):
 
     return metadata
 
-
-def retrieve_training_images(inputs):
-    """
-    Downloads all images from Landsat 5, Landsat 7, Landsat 8 and Sentinel-2
-    covering the area of interest and acquired between the specified dates.
-    The downloaded images are in .TIF format and organised in subfolders, divided
-    by satellite mission. The bands are also subdivided by pixel resolution.
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    inputs: dict with the following keys
-        'sitename': str
-            name of the site
-        'polygon': list
-            polygon containing the lon/lat coordinates to be extracted,
-            longitudes in the first column and latitudes in the second column,
-            there are 5 pairs of lat/lon with the fifth point equal to the first point:
-            ```
-            polygon = [[[151.3, -33.7],[151.4, -33.7],[151.4, -33.8],[151.3, -33.8],
-            [151.3, -33.7]]]
-            ```
-        'dates': list of str
-            list that contains 2 strings with the initial and final dates in
-            format 'yyyy-mm-dd':
-            ```
-            dates = ['1987-01-01', '2018-01-01']
-            ```
-        'sat_list': list of str
-            list that contains the names of the satellite missions to include:
-            ```
-            sat_list = ['L5', 'L7', 'L8', 'S2']
-            ```
-        'filepath_data': str
-            filepath to the directory where the images are downloaded
-
-    Returns:
-    -----------
-    metadata: dict
-        contains the information about the satellite images that were downloaded:
-        date, filename, georeferencing accuracy and image coordinate reference system
-
-    """
-    # initialise connection with GEE server
-    ee.Initialize()
-
-    # check image availabiliy and retrieve list of images
-    im_dict_T1 = check_training_images_available(inputs)
-
-    # create a new directory for this site with the name of the site
-    im_folder = os.path.join(inputs['filepath'], inputs['sitename'])
-    if not os.path.exists(im_folder): os.makedirs(im_folder)
-
-    suffix = '.tif'
-
-    for satname in im_dict_T1.keys():
-
-        # create subfolder structure to store the different bands
-        filepaths = create_folder_structure(im_folder, satname)
-        # initialise variables and loop through images
-        georef_accs = []
-        filenames = []
-        all_names = []
-        im_epsg = []
-
-        for i in range(15):
-
-            ## least cloudy is first image
-            im_meta = im_dict_T1[satname][i]
-
-            print(f'    date : {im_meta["properties"]["DATATAKE_IDENTIFIER"][5:13]}')
-            print(f'    cloud: {im_meta["properties"]["CLOUDY_PIXEL_PERCENTAGE"]:3.1f}%')
-
-            # get time of acquisition (UNIX time) and convert to datetime
-            t = im_meta['properties']['system:time_start']
-            im_timestamp = datetime.fromtimestamp(t / 1000, tz=pytz.utc)
-            im_date = im_timestamp.strftime('%Y-%m-%d-%H-%M-%S')
-
-            # get epsg code
-            im_epsg.append(int(im_meta['bands'][0]['crs'][5:]))
-
-            # Sentinel-2 products don't provide a georeferencing accuracy (RMSE as in Landsat)
-            # but they have a flag indicating if the geometric quality control was passed or failed
-            # if passed a value of 1 is stored if failed a value of -1 is stored in the metadata
-            # the name of the property containing the flag changes across the S2 archive
-            # check which flag name is used for the image and store the 1/-1 for acc_georef
-            flag_names = ['GEOMETRIC_QUALITY_FLAG', 'GEOMETRIC_QUALITY', 'quality_check']
-            for key in flag_names:
-                if key in im_meta['properties'].keys(): break
-            if im_meta['properties'][key] == 'PASSED':
-                acc_georef = 1
-            else:
-                acc_georef = -1
-
-            georef_accs.append(acc_georef)
-
-            bands = {}
-            im_fn = {}
-
-            # first delete dimensions key from dictionnary
-            # otherwise the entire image is extracted (don't know why)
-            im_bands = im_meta['bands']
-            for j in range(len(im_bands)):
-                del im_bands[j]['dimensions']
-
-            bands['10m'] = [im_bands[1], im_bands[2], im_bands[3], im_bands[7]]  # multispectral bands
-            bands['20m'] = [im_bands[11]]  # SWIR band
-            bands['60m'] = [im_bands[15]]  # QA band
-
-            for key in bands.keys():
-                im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + suffix
-
-            # check for 2 or 3 images taken on the same date
-            # and add 'dup' or 'tri' to the name respectively
-            if any(im_fn['10m'] in _ for _ in all_names):
-                for key in bands.keys():
-                    im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_dup' + suffix
-
-                if im_fn['10m'] in all_names:
-                    for key in bands.keys():
-                        im_fn[key] = im_date + '_' + satname + '_' + inputs[
-                            'sitename'] + '_' + key + '_tri' + suffix
-
-            all_names.append(im_fn['10m'])
-            filenames.append(im_fn['10m'])
-
-            # download .tif from EE (multispectral bands at 3 different resolutions)
-            while True:
-                try:
-                    im_ee = ee.Image(im_meta['id'])
-                    local_data_10m = download_tif(im_ee, inputs['polygon'], bands['10m'], filepaths[1])
-                    local_data_20m = download_tif(im_ee, inputs['polygon'], bands['20m'], filepaths[2])
-                    local_data_60m = download_tif(im_ee, inputs['polygon'], bands['60m'], filepaths[3])
-                    break
-                except:
-                    continue
-            # rename the files as the image is downloaded as 'data.tif'
-            try:  # 10m
-                os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
-            except:  # overwrite if already exists
-                os.remove(os.path.join(filepaths[1], im_fn['10m']))
-                os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
-            try:  # 20m
-                os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
-            except:  # overwrite if already exists
-                os.remove(os.path.join(filepaths[2], im_fn['20m']))
-                os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
-            try:  # 60m
-                os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
-            except:  # overwrite if already exists
-                os.remove(os.path.join(filepaths[3], im_fn['60m']))
-                os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
-            # metadata for .txt file
-            filename_txt = im_fn['10m'].replace('_10m', '').replace('.tif', '')
-            metadict = {'filename': im_fn['10m'], 'acc_georef': georef_accs[i],
-                        'epsg': im_epsg[i]}
-
-        # write metadata
-        with open(os.path.join(filepaths[0], filename_txt + '.txt'), 'w') as f:
-            for key in metadict.keys():
-                f.write('%s\t%s\n' % (key, metadict[key]))
-        # print percentage completion for user
-
-    # once all images have been downloaded, load metadata from .txt files
-    metadata = get_metadata(inputs)
-
-    # save metadata dict
-    with open(os.path.join(im_folder, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
-        pickle.dump(metadata, f)
-
-    return metadata
-
 # function to load the metadata if images have already been downloaded
 def get_metadata(inputs):
     """
@@ -489,6 +316,7 @@ def get_metadata(inputs):
     """
     # directory containing the images
     filepath = os.path.join(inputs['filepath'],inputs['sitename'])
+
     # initialize metadata dict
     metadata = dict([])
     # loop through the satellite missions
@@ -504,6 +332,7 @@ def get_metadata(inputs):
             filenames_meta.sort()
             # loop through the .txt files
             for im_meta in filenames_meta:
+
                 # read them and extract the metadata info: filename, georeferencing accuracy
                 # epsg code and date
                 with open(os.path.join(filepath_meta, im_meta), 'r') as f:
@@ -624,64 +453,6 @@ def check_images_available(inputs):
 
     return im_dict_T1, im_dict_T2
 
-def check_training_images_available(inputs):
-    """
-    Create the structure of subfolders for each satellite mission
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    inputs: dict
-        inputs dictionnary
-
-    Returns:
-    -----------
-    im_dict_T1: list of dict
-        list of images in Tier 1 and Level-1C
-    im_dict_T2: list of dict
-        list of images in Tier 2 (Landsat only)
-    """
-
-    # check if dates are in correct order
-    dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
-    if  dates[1] <= dates[0]:
-        raise Exception('Verify that your dates are in the correct order')
-
-    # check if EE was initialised or not
-    try:
-        ee.ImageCollection('LANDSAT/LT05/C01/T1_TOA')
-    except:
-        ee.Initialize()
-
-    # check how many images are available in Tier 1 and Sentinel Level-1C
-    col_names_T1 = {'L5':'LANDSAT/LT05/C01/T1_TOA',
-                 'L7':'LANDSAT/LE07/C01/T1_TOA',
-                 'L8':'LANDSAT/LC08/C01/T1_TOA',
-                 'S2':'COPERNICUS/S2'}
-
-    im_dict_T1 = {}
-    for satname in inputs['sat_list']:
-
-        # get list of images in EE collection
-        while True:
-            try:
-
-                ee_col = ee.ImageCollection(col_names_T1[satname])\
-                            .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
-                            .filterDate(inputs['dates'][0],inputs['dates'][1]) \
-                            .sort('CLOUDY_PIXEL_PERCENTAGE')
-
-                im_list = ee_col.getInfo().get('features')
-                break
-            except:
-                continue
-
-        im_dict_T1[satname] = im_list
-
-    return im_dict_T1
-
-
 def download_tif(image, polygon, bandsId, filepath):
     """
     Downloads a .TIF image from the ee server. The image is downloaded as a
@@ -758,7 +529,6 @@ def download_tif(image, polygon, bandsId, filepath):
         # return filepath to stacked file called data.tif
         return os.path.join(filepath,'data.tif')
 
-
 def create_folder_structure(im_folder, satname):
     """
     Create the structure of subfolders for each satellite mission
@@ -795,7 +565,6 @@ def create_folder_structure(im_folder, satname):
         if not os.path.exists(fp): os.makedirs(fp)
 
     return filepaths
-
 
 def remove_cloudy_images(im_list, satname, prc_cloud_cover=95):
     """
