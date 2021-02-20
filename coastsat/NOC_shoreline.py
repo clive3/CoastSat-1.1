@@ -1289,9 +1289,10 @@ def adjust_detection_5classes(im_ms, cloud_mask, im_labels, im_ref_buffer, image
     ax4.set_facecolor('0.75')
     ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
     ax4.set(ylabel='PDF', yticklabels=[], xlim=[-1, 1])
+
     if len(int_sand) > 0:
         bins = np.arange(np.nanmin(int_sand), np.nanmax(int_sand) + binwidth, binwidth)
-        ax4.hist(int_sand, bins=bins, density=True, color=colours[0, :], label='sand/hard')
+        ax4.hist(int_sand, bins=bins, density=True, color=colours[0,:], label='sand/hard')
     if len(int_nature) > 0:
         bins = np.arange(np.nanmin(int_nature), np.nanmax(int_nature) + binwidth, binwidth)
         ax4.hist(int_nature, bins=bins, density=True, color=colours[1, :], label='land1', alpha=0.75)
@@ -1433,7 +1434,18 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     date_str = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d  %H:%M:%S')
 
     # compute classified image
-    im_class = np.copy(sar_image[:,:,1])
+    image_vv = np.copy(sar_image[:,:,0])
+    image_vh = np.copy(sar_image[:,:,1])
+
+    # and the vectors needed for the histogram
+    cols = sar_image.shape[0]
+    rows = sar_image.shape[1]
+    vec_vv = image_vv.reshape(cols*rows)
+    vec_vh = image_vh.reshape(cols*rows)
+
+    colours = np.zeros((5,4))
+    colours[0, :] = np.array([1, 0, 1, 1])
+    colours[1, :] = np.array([0, 1, 0, 1])
 
     # create figure
     if plt.get_fignums():
@@ -1460,7 +1472,7 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     ##########################################################################
 
     # plot image 1 (RGB)
-    ax1.imshow(im_class)
+    ax1.imshow(image_vv)
     ax1.axis('off')
     ax1.set_title(sitename, fontsize=12)
 
@@ -1474,21 +1486,20 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     ax3.axis('off')
     ax3.set_title('VH', fontsize=12)
 
-    sar_min = np.nanmin(im_class)
-    sar_max = np.nanmax(im_class)
-
     # plot histogram of sigma values
-    binwidth = (sar_max - sar_min) / 100
     ax4.set_facecolor('0.75')
     ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
-    ax4.set(ylabel='PDF', yticklabels=[], xlim=[sar_min, sar_max])
+    ax4.set(ylabel='PDF', yticklabels=[], xlim=[np.nanmin(sar_image), np.nanmax(sar_image)])
 
-    bins = np.arange(sar_min, sar_max + binwidth, binwidth)
+    binwidth = 0.1
+    bins = np.arange(np.nanmin(vec_vv), np.nanmax(vec_vv) + binwidth, binwidth)
+    ax4.hist(vec_vv, bins=bins, density=True, color=colours[0, :], label='vv')
 
-    ax4.hist(im_class, bins=bins, density=True, color='gray',label='sigma0')
+    bins = np.arange(np.nanmin(vec_vh), np.nanmax(vec_vh) + binwidth, binwidth)
+    ax4.hist(vec_vh, bins=bins, density=True, color=colours[1, :], label='vh', alpha=0.75)
 
-    t_sar = filters.threshold_otsu(im_class)
-    contours_sar = measure.find_contours(im_class, level=t_sar, mask=im_ref_buffer)
+    t_sar = filters.threshold_otsu(image_vh)
+    contours_sar = measure.find_contours(image_vh, level=t_sar, mask=im_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
@@ -1521,7 +1532,7 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
-            contours_sar = measure.find_contours(im_class, level=t_sar, mask=im_ref_buffer)
+            contours_sar = measure.find_contours(image_vh, level=t_sar, mask=im_ref_buffer)
             # process the water contours into a shoreline
             shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
             # convert shoreline to pixels
