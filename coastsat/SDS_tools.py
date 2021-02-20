@@ -651,7 +651,7 @@ def output_to_gdf(output, geomtype):
             gdf.loc[i,'date'] = output['dates'][i].strftime('%Y-%m-%d %H:%M:%S')
             gdf.loc[i,'satname'] = output['satname'][i]
             gdf.loc[i,'geoaccuracy'] = output['geoaccuracy'][i]
-            gdf.loc[i,'cloud_cover'] = output['cloud_cover'][i]
+#            gdf.loc[i,'cloud_cover'] = output['cloud_cover'][i]
             # store into geodataframe
             if counter == 0:
                 gdf_all = gdf
