@@ -1744,7 +1744,7 @@ def get_metadata(inputs):
     # if a folder has been created for the given satellite mission
     if satname in os.listdir(filepath):
         # update the metadata dict
-        metadata[satname] = {'filenames':[], 'acc_georef':[], 'epsg':[], 'dates':[]}
+        metadata[satname] = {'filenames':[], 'acc_georef':[], 'epsg':[], 'dates':[], 'median_no': []}
         # directory where the metadata .txt files are stored
         filepath_meta = os.path.join(filepath, satname, 'meta')
         # get the list of filenames and sort it chronologically
@@ -1759,6 +1759,7 @@ def get_metadata(inputs):
                 filename = f.readline().split('\t')[1].replace('\n','')
                 acc_georef = float(f.readline().split('\t')[1].replace('\n',''))
                 epsg = int(f.readline().split('\t')[1].replace('\n',''))
+                median_no = int(f.readline().split('\t')[1].replace('\n', ''))
             date_str = filename[0:19]
             date = pytz.utc.localize(datetime(int(date_str[:4]),int(date_str[5:7]),
                                               int(date_str[8:10]),int(date_str[11:13]),
@@ -1768,6 +1769,7 @@ def get_metadata(inputs):
             metadata[satname]['acc_georef'].append(acc_georef)
             metadata[satname]['epsg'].append(epsg)
             metadata[satname]['dates'].append(date)
+            metadata[satname]['median_no'].append(median_no)
 
     # save a .pkl file containing the metadata dict
     with open(os.path.join(filepath, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:

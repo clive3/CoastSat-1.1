@@ -440,10 +440,11 @@ def extract_sar_shorelines(metadata, settings):
         # get image spatial reference system (epsg code) from metadata dict
         image_epsg = metadata[satname]['epsg'][i]
 
-        # calculate a buffer around the reference shoreline (if any has been digitised)
-        im_ref_buffer = create_shoreline_buffer(sar_image.shape, georef, image_epsg,
-                                                pixel_size, settings)
+        buffer_shape = (sar_image.shape[0], sar_image.shape[1])
 
+        # calculate a buffer around the reference shoreline (if any has been digitised)
+        im_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+                                                pixel_size, settings)
 
         # find the shoreline interactively
         date = filename[:19]
@@ -1433,8 +1434,6 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     # compute classified image
     im_class = np.copy(sar_image[:,:,1])
 
-    colours = np.array([1, 1, 1, 1])
-
     # create figure
     if plt.get_fignums():
         # if it exists, open the figure
@@ -1464,19 +1463,22 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     ax1.axis('off')
     ax1.set_title('%s - %s' % (sitename, satname), fontsize=12)
 
+    sar_min = np.nanmin(im_class)
+    sar_max = np.nanmax(im_class)
 
     # plot histogram of sigma values
-    binwidth = 0.01
+    binwidth = (sar_max - sar_min) / 100
     ax4.set_facecolor('0.75')
     ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
-    ax4.set(ylabel='PDF', yticklabels=[], xlim=[-1, 1])
+    ax4.set(ylabel='PDF', yticklabels=[], xlim=[sar_min, sar_max])
 
-    bins = np.arange(np.nanmin(im_class), np.nanmax(im_class) + binwidth, binwidth)
-    ax4.hist(im_class, bins=bins, density=True, color=colours[0, :], label='sigma0')
+    bins = np.arange(sar_min, sar_max + binwidth, binwidth)
+
+ #   ax4.hist(im_class, bins=bins, density=True, color= np.array([1,0,1,1]),label='sigma0')
 
     contours_sar, t_sar = find_sar_contours(im_class, im_ref_buffer)
 
-    cloud_mask = np.ones(im_class.shape)
+    cloud_mask = np.zeros(im_class.shape)
     # process the water contours into a shoreline
     shoreline = process_shoreline(contours_sar, cloud_mask, georef, image_epsg, settings)
     # convert shoreline to pixels
@@ -1503,14 +1505,10 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
         if len(pt) > 0:
             # update the threshold value
             t_sar = pt[0][0]
-            # if user clicked somewhere wrong and value is not between -1 and 1
-            if np.abs(t_sar) >= 1: continue
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
             contours = measure.find_contours(im_class, t_sar)
-            # remove contours that contain NaNs (due to cloud pixels in the contour)
-            contours = process_contours(contours)
             # process the water contours into a shoreline
             shoreline = process_shoreline(contours, cloud_mask, georef, image_epsg, settings)
             # convert shoreline to pixels
@@ -1526,7 +1524,7 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
 #            sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             fig.canvas.draw_idle()
         else:
-            ax4.set_title('MNDWI pixel intensities and threshold')
+            ax4.set_title('sigma0 pixel intensities and threshold')
             break
 
     # let user manually accept/reject the image
