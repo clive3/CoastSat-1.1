@@ -1351,7 +1351,7 @@ def retrieve_training_images(inputs):
 
             bands = dict([])
             im_fn = dict([])
-            # first delete dimensions key from dictionnary
+            # first delete dimensions key from dictionary
             # otherwise the entire image is extracted (don't know why)
             im_bands = im_meta['bands']
             for j in range(len(im_bands)): del im_bands[j]['dimensions']
