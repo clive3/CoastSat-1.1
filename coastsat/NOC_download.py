@@ -271,27 +271,10 @@ def retrieve_images(inputs):
 
 
 def check_training_images_available(inputs):
-    """
-    Create the structure of subfolders for each satellite mission
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    inputs: dict
-        inputs dictionnary
-
-    Returns:
-    -----------
-    im_dict_T1: list of dict
-        list of images in Tier 1 and Level-1C
-    im_dict_T2: list of dict
-        list of images in Tier 2 (Landsat only)
-    """
 
     # check if dates are in correct order
     dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
-    if  dates[1] <= dates[0]:
+    if dates[1] <= dates[0]:
         raise Exception('Verify that your dates are in the correct order')
 
     # check if EE was initialised or not
@@ -308,10 +291,6 @@ def check_training_images_available(inputs):
 
     im_dict_T1 = {}
     for satname in inputs['sat_list']:
-
-        print(satname)
-        print(inputs['polygon'])
-        print(inputs['dates'])
 
         # get list of images in EE collection
         while True:
@@ -1316,15 +1295,7 @@ def retrieve_training_images(inputs):
     ee.Initialize()
 
     # check image availabiliy and retrieve list of images
-    im_dict_T1, im_dict_T2 = check_images_available(inputs)
-
-    # if user also wants to download T2 images, merge both lists
-    if 'include_T2' in inputs.keys():
-        for key in inputs['sat_list']:
-            if key == 'S2':
-                continue
-            else:
-                im_dict_T1[key] += im_dict_T2[key]
+    im_dict_T1 = check_training_images_available(inputs)
 
     # remove UTM duplicates in S2 collections (they provide several projections for same images)
     if 'S2' in inputs['sat_list'] and len(im_dict_T1['S2']) > 0:
@@ -1345,7 +1316,7 @@ def retrieve_training_images(inputs):
         filenames = []
         all_names = []
         im_epsg = []
-        for i in range(len(im_dict_T1[satname])):
+        for i in range(5):
 
             im_meta = im_dict_T1[satname][i]
 
@@ -1482,8 +1453,8 @@ def retrieve_training_images(inputs):
                     try:
                         im_ee = ee.Image(im_meta['id'])
                         local_data_10m = download_tif(im_ee, inputs['polygon'], bands['10m'], filepaths[1])
-                        #                       local_data_20m = download_tif(im_ee, inputs['polygon'], bands['20m'], filepaths[2])
-                        #                       local_data_60m = download_tif(im_ee, inputs['polygon'], bands['60m'], filepaths[3])
+                        local_data_20m = download_tif(im_ee, inputs['polygon'], bands['20m'], filepaths[2])
+                        local_data_60m = download_tif(im_ee, inputs['polygon'], bands['60m'], filepaths[3])
                         break
                     except:
                         continue
@@ -1759,7 +1730,7 @@ def get_metadata(inputs):
                 filename = f.readline().split('\t')[1].replace('\n','')
                 acc_georef = float(f.readline().split('\t')[1].replace('\n',''))
                 epsg = int(f.readline().split('\t')[1].replace('\n',''))
-                median_no = int(f.readline().split('\t')[1].replace('\n', ''))
+#                median_no = int(f.readline().split('\t')[1].replace('\n', ''))
             date_str = filename[0:19]
             date = pytz.utc.localize(datetime(int(date_str[:4]),int(date_str[5:7]),
                                               int(date_str[8:10]),int(date_str[11:13]),
@@ -1769,7 +1740,7 @@ def get_metadata(inputs):
             metadata[satname]['acc_georef'].append(acc_georef)
             metadata[satname]['epsg'].append(epsg)
             metadata[satname]['dates'].append(date)
-            metadata[satname]['median_no'].append(median_no)
+ #           metadata[satname]['median_no'].append(median_no)
 
     # save a .pkl file containing the metadata dict
     with open(os.path.join(filepath, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:

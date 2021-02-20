@@ -141,6 +141,76 @@ def classify_image_NN_4classes(im_ms, cloud_mask, min_beach_area, clf):
 
     return im_classif, im_labels
 
+def classify_image_NN_6classes(im_ms, cloud_mask, min_beach_area, clf):
+    """
+    Classifies every pixel in the image in one of 4 classes:
+        - sand                                          --> label = 1
+        - whitewater (breaking waves and swash)         --> label = 2
+        - water                                         --> label = 3
+        - other (vegetation, buildings, rocks...)       --> label = 0
+
+    The classifier is a Neural Network that is already trained.
+
+    KV WRL 2018
+
+    Arguments:
+    -----------
+    im_ms: np.array
+        Pansharpened RGB + downsampled NIR and SWIR
+    im_extra:
+        only used for Landsat 7 and 8 where im_extra is the panchromatic band
+    cloud_mask: np.array
+        2D cloud mask with True where cloud pixels are
+    min_beach_area: int
+        minimum number of pixels that have to be connected to belong to the SAND class
+    clf: joblib object
+        pre-trained classifier
+
+    Returns:
+    -----------
+    im_classif: np.array
+        2D image containing labels
+    im_labels: np.array of booleans
+        3D image containing a boolean image for each class (im_classif == label)
+
+    """
+
+    # calculate features
+    vec_features = calculate_features(im_ms, cloud_mask, np.ones(cloud_mask.shape).astype(bool))
+    vec_features[np.isnan(vec_features)] = 1e-9 # NaN values are create when std is too close to 0
+
+    # remove NaNs and cloudy pixels
+    vec_cloud = cloud_mask.reshape(cloud_mask.shape[0]*cloud_mask.shape[1])
+    vec_nan = np.any(np.isnan(vec_features), axis=1)
+    vec_mask = np.logical_or(vec_cloud, vec_nan)
+    vec_features = vec_features[~vec_mask, :]
+
+    # classify pixels
+    labels = clf.predict(vec_features)
+
+    # recompose image
+    vec_classif = np.nan*np.ones((cloud_mask.shape[0]*cloud_mask.shape[1]))
+    vec_classif[~vec_mask] = labels
+    im_classif = vec_classif.reshape((cloud_mask.shape[0], cloud_mask.shape[1]))
+
+    # create a stack of boolean images for each label
+    im_land1 = im_classif == 1
+    im_land2 = im_classif == 2
+    im_land3 = im_classif == 3
+    im_ww = im_classif == 4
+    im_water = im_classif == 5
+    im_sand = im_classif == 6
+
+    # remove small patches of sand or water that could be around the image (usually noise)
+    im_land1 = morphology.remove_small_objects(im_land1, min_size=min_beach_area, connectivity=2)
+    im_land2 = morphology.remove_small_objects(im_land2, min_size=min_beach_area, connectivity=2)
+    im_land3 = morphology.remove_small_objects(im_land3, min_size=min_beach_area, connectivity=2)
+    im_water = morphology.remove_small_objects(im_water, min_size=min_beach_area, connectivity=2)
+
+    im_labels = np.stack((im_land1, im_land2, im_land3, im_ww, im_water, im_sand), axis=-1)
+
+    return im_classif, im_labels
+
 
 def find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, buffer_size, im_ref_buffer):
     """
