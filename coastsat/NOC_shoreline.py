@@ -212,7 +212,7 @@ def classify_image_NN_6classes(im_ms, cloud_mask, min_beach_area, clf):
     return im_classif, im_labels
 
 
-def find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, buffer_size, im_ref_buffer):
+def find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, im_ref_buffer):
     """
     New robust method for extracting shorelines. Incorporates the classification
     component to refine the treshold and make it specific to the sand/water interface.
@@ -282,7 +282,7 @@ def find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, buffer_size, im_ref
     # find contour with MS algorithm
     im_mwi_buffer = np.copy(im_mwi)
     im_mwi_buffer[~im_ref_buffer] = np.nan
-    contours_mwi = measure.find_contours(im_mwi_buffer, t_mwi)
+    contours_mwi = measure.find_contours(im_mwi_buffer, level=t_mwi,  mask=im_ref_buffer)
     # remove contour points that are NaNs (around clouds)
     contours_mwi = process_contours(contours_mwi)
 
@@ -446,7 +446,7 @@ def extract_shorelines(metadata, settings):
             'cloud_cover': output_cloudcover,
             'geoaccuracy': output_geoaccuracy,
             'idx': output_idxkeep,
-            'median_no': output_median_no
+#            'median_no': output_median_no
         }
         print('')
 
@@ -1587,7 +1587,7 @@ def adjust_detection_6classes(im_ms, cloud_mask, im_labels, im_ref_buffer, image
         fig.set_size_inches([18, 9])
         mng = plt.get_current_fig_manager()
         mng.window.showMaximized()
-        gs = gridspec.GridSpec(2, 3, height_ratios=[4, 1])
+        gs = gridspec.GridSpec(2, 3, height_ratios=[3, 1])
         gs.update(bottom=0.05, top=0.95, left=0.03, right=0.97)
         ax1 = fig.add_subplot(gs[0, 0])
         ax2 = fig.add_subplot(gs[0, 1], sharex=ax1, sharey=ax1)
@@ -1651,13 +1651,12 @@ def adjust_detection_6classes(im_ms, cloud_mask, im_labels, im_ref_buffer, image
         ax4.hist(int_water, bins=bins, density=True, color=colours[4, :], label='water', alpha=0.75)
     if len(int_sand) > 0:
         bins = np.arange(np.nanmin(int_sand), np.nanmax(int_sand) + binwidth, binwidth)
-        ax4.hist(int_sand, bins=bins, density=True, color=colours[5, :], label='sand', alpha=0.75)
+        ax4.hist(int_sand, bins=bins, density=True, color=colours[5, :], label='sand')
 
         # automatically map the shoreline based on the classifier if enough sand pixels
     if sum(sum(im_labels[:, :, 0])) > 10:
         # use classification to refine threshold and extract the sand/water interface
-        contours_mndwi, t_mndwi = find_wl_contours2_5classes(im_ms, im_labels, cloud_mask,
-                                                    buffer_size_pixels, im_ref_buffer)
+        contours_mndwi, t_mndwi = find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, im_ref_buffer)
     else:
         print('not enough sand pixels ... using alternative algorithm for shoreline')
         # find water contours on MNDWI grayscale image
@@ -1694,7 +1693,7 @@ def adjust_detection_6classes(im_ms, cloud_mask, im_labels, im_ref_buffer, image
             # update the plot
             t_line.set_xdata([t_mndwi, t_mndwi])
             # map contours with new threshold
-            contours = measure.find_contours(im_mndwi_buffer, t_mndwi)
+            contours = measure.find_contours(im_mndwi_buffer, level=t_mndwi,  mask=im_ref_buffer)
             # remove contours that contain NaNs (due to cloud pixels in the contour)
             contours = process_contours(contours)
             # process the water contours into a shoreline
