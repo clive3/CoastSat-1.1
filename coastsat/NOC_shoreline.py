@@ -1425,27 +1425,29 @@ def adjust_detection_5classes(im_ms, cloud_mask, im_labels, im_ref_buffer, image
 def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
                      settings, date, satname):
 
+    inputs = settings['inputs']
+    polarisation = inputs['polarisation']
 
-    sitename = settings['inputs']['sitename']
-    filepath_data = settings['inputs']['filepath']
+    sitename = inputs['sitename']
+    filepath_data = inputs['filepath']
     # subfolder where the .jpg file is stored if the user accepts the shoreline detection
     filepath = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
+
     # format date
-    date_str = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d  %H:%M:%S')
+#    date_str = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d  %H:%M:%S')
 
     # compute classified image
-    image_vv = np.copy(sar_image[:,:,0])
-    image_vh = np.copy(sar_image[:,:,1])
+    if polarisation == 'VV':
+        image_pol = np.copy(sar_image[:,:,0])
+        colour = [1, 0, 1, 1]
+    else:
+        image_pol = np.copy(sar_image[:,:,1])
+        colour = [1, 1, 0, 1]
 
     # and the vectors needed for the histogram
     cols = sar_image.shape[0]
     rows = sar_image.shape[1]
-    vec_vv = image_vv.reshape(cols*rows)
-    vec_vh = image_vh.reshape(cols*rows)
-
-    colours = np.zeros((5,4))
-    colours[0, :] = np.array([1, 0, 1, 1])
-    colours[1, :] = np.array([0, 1, 0, 1])
+    vec_pol = image_pol.reshape(cols*rows)
 
     # create figure
     if plt.get_fignums():
@@ -1472,17 +1474,17 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     ##########################################################################
 
     # plot image 1 (RGB)
-    ax1.imshow(image_vv)
+    ax1.imshow(image_pol)
     ax1.axis('off')
     ax1.set_title(sitename, fontsize=12)
 
     # plot image 1 (grey)
-    ax2.imshow(sar_image[:,:,0], cmap='gray')
+    ax2.imshow(image_pol, cmap='gray')
     ax2.axis('off')
     ax2.set_title('VV', fontsize=12)
 
     # plot image 3 (blue/red)
-    ax3.imshow(sar_image[:,:,1], cmap='gray')
+    ax3.imshow(image_pol, cmap='bwr')
     ax3.axis('off')
     ax3.set_title('VH', fontsize=12)
 
@@ -1492,14 +1494,11 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     ax4.set(ylabel='PDF', yticklabels=[], xlim=[np.nanmin(sar_image), np.nanmax(sar_image)])
 
     binwidth = 0.1
-    bins = np.arange(np.nanmin(vec_vv), np.nanmax(vec_vv) + binwidth, binwidth)
-    ax4.hist(vec_vv, bins=bins, density=True, color=colours[0, :], label='vv')
+    bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + binwidth, binwidth)
+    ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
-    bins = np.arange(np.nanmin(vec_vh), np.nanmax(vec_vh) + binwidth, binwidth)
-    ax4.hist(vec_vh, bins=bins, density=True, color=colours[1, :], label='vh', alpha=0.75)
-
-    t_sar = filters.threshold_otsu(image_vh)
-    contours_sar = measure.find_contours(image_vh, level=t_sar, mask=im_ref_buffer)
+    t_sar = filters.threshold_otsu(image_pol)
+    contours_sar = measure.find_contours(image_pol, level=t_sar, mask=im_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
@@ -1532,7 +1531,7 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
-            contours_sar = measure.find_contours(image_vh, level=t_sar, mask=im_ref_buffer)
+            contours_sar = measure.find_contours(image_pol, level=t_sar, mask=im_ref_buffer)
             # process the water contours into a shoreline
             shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
             # convert shoreline to pixels
