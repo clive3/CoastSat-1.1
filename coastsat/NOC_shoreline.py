@@ -449,8 +449,8 @@ def extract_sar_shorelines(metadata, settings):
 
         # find the shoreline interactively
         date = filename[:19]
-        skip_image, shoreline = adjust_detection_sar(sar_image,  im_ref_buffer, image_epsg,
-                                                     georef, settings, date,  satname)
+        skip_image, shoreline = adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
+                                                     settings, date,  satname)
         # if the user decides to skip the image, continue and do not save the mapped shoreline
         if skip_image:
             continue
@@ -1440,8 +1440,8 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
         # if it exists, open the figure
         fig = plt.gcf()
         ax1 = fig.axes[0]
- #       ax2 = fig.axes[1]
- #       ax3 = fig.axes[2]
+        ax2 = fig.axes[1]
+        ax3 = fig.axes[2]
         ax4 = fig.axes[3]
     else:
         # else create a new figure
@@ -1452,8 +1452,8 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
         gs = gridspec.GridSpec(2, 3, height_ratios=[4, 1])
         gs.update(bottom=0.05, top=0.95, left=0.03, right=0.97)
         ax1 = fig.add_subplot(gs[0, 0])
-#        ax2 = fig.add_subplot(gs[0, 1], sharex=ax1, sharey=ax1)
-#        ax3 = fig.add_subplot(gs[0, 2], sharex=ax1, sharey=ax1)
+        ax2 = fig.add_subplot(gs[0, 1], sharex=ax1, sharey=ax1)
+        ax3 = fig.add_subplot(gs[0, 2], sharex=ax1, sharey=ax1)
         ax4 = fig.add_subplot(gs[1, :])
     ##########################################################################
     # to do: rotate image if too wide
@@ -1462,7 +1462,17 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     # plot image 1 (RGB)
     ax1.imshow(im_class)
     ax1.axis('off')
-    ax1.set_title('%s - %s' % (sitename, satname), fontsize=12)
+    ax1.set_title(sitename, fontsize=12)
+
+    # plot image 1 (grey)
+    ax2.imshow(sar_image[:,:,0], cmap='gray')
+    ax2.axis('off')
+    ax2.set_title('VV', fontsize=12)
+
+    # plot image 3 (blue/red)
+    ax3.imshow(sar_image[:,:,1], cmap='gray')
+    ax3.axis('off')
+    ax3.set_title('VH', fontsize=12)
 
     sar_min = np.nanmin(im_class)
     sar_max = np.nanmax(im_class)
@@ -1475,11 +1485,10 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
 
     bins = np.arange(sar_min, sar_max + binwidth, binwidth)
 
- #   ax4.hist(im_class, bins=bins, density=True, color= np.array([1,0,1,1]),label='sigma0')
+    ax4.hist(im_class, bins=bins, density=True, color='gray',label='sigma0')
 
-#    contours_sar, t_sar = find_sar_contours(im_class)
     t_sar = filters.threshold_otsu(im_class)
-    contours_sar = measure.find_contours(im_class, t_sar)
+    contours_sar = measure.find_contours(im_class, level=t_sar, mask=im_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
@@ -1493,10 +1502,10 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
 
         sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
     # plot the shoreline on the images
-    sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
-#    sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
-#    sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
-    t_line = ax4.axvline(x=t_sar, ls='--', c='k', lw=1.5, label='threshold')
+    sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
+    sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
+    sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
+    t_line = ax4.axvline(x=t_sar, ls='--', c='r', lw=1.5, label='threshold')
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
     # adjust the threshold manually by letting the user change the threshold
@@ -1512,7 +1521,7 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
-            contours_sar = measure.find_contours(im_class, t_sar)
+            contours_sar = measure.find_contours(im_class, level=t_sar, mask=im_ref_buffer)
             # process the water contours into a shoreline
             shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
             # convert shoreline to pixels
@@ -1524,8 +1533,8 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
                 sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
             # update the plotted shorelines
             sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-#            sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-#            sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             fig.canvas.draw_idle()
         else:
             ax4.set_title('sigma0 pixel intensities and threshold')
