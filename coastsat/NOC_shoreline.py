@@ -197,6 +197,7 @@ def find_wl_contours2_5classes(im_ms, im_labels, cloud_mask, buffer_size, im_ref
     int_land = vec_ind[np.logical_and(vec_im_ref_buffer,vec_all_land),:]
     int_sea = vec_ind[np.logical_and(vec_im_ref_buffer,vec_water),:]
 
+
     # make sure both classes have the same number of pixels before thresholding
     if len(int_land) > 0 and len(int_sea) > 0:
         if np.argmin([int_land.shape[0],int_sea.shape[0]]) == 1:
@@ -1476,17 +1477,20 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
 
  #   ax4.hist(im_class, bins=bins, density=True, color= np.array([1,0,1,1]),label='sigma0')
 
-    contours_sar, t_sar = find_sar_contours(im_class, im_ref_buffer)
+#    contours_sar, t_sar = find_sar_contours(im_class)
+    t_sar = filters.threshold_otsu(im_class)
+    contours_sar = measure.find_contours(im_class, t_sar)
 
-    cloud_mask = np.zeros(im_class.shape)
     # process the water contours into a shoreline
-    shoreline = process_shoreline(contours_sar, cloud_mask, georef, image_epsg, settings)
+    shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
     # convert shoreline to pixels
     if len(shoreline) > 0:
         sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
                                                                     settings['output_epsg'],
                                                                     image_epsg)[:, [0, 1]], georef)
     else:
+        print(f'@@@ no shorelines yet')
+
         sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
     # plot the shoreline on the images
     sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
@@ -1508,9 +1512,9 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
-            contours = measure.find_contours(im_class, t_sar)
+            contours_sar = measure.find_contours(im_class, t_sar)
             # process the water contours into a shoreline
-            shoreline = process_shoreline(contours, cloud_mask, georef, image_epsg, settings)
+            shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
             # convert shoreline to pixels
             if len(shoreline) > 0:
                 sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
@@ -1581,14 +1585,28 @@ def adjust_detection_sar(sar_image, im_ref_buffer, image_epsg, georef,
     return skip_image, shoreline
 
 
-def find_sar_contours(im_sar, im_ref_buffer):
+def process_sar_shoreline(contours, georef, image_epsg, settings):
 
-    t_sar = filters.threshold_otsu(im_sar)
+    # convert pixel coordinates to world coordinates
+    contours_world = SDS_tools.convert_pix2world(contours, georef)
+    # convert world coordinates to desired spatial reference system
+    contours_epsg = SDS_tools.convert_epsg(contours_world, image_epsg, settings['output_epsg'])
+    # remove contours that have a perimeter < min_length_sl (provided in settings dict)
+    # this enables to remove the very small contours that do not correspond to the shoreline
+    contours_long = []
+    for l, wl in enumerate(contours_epsg):
+        coords = [(wl[k, 0], wl[k, 1]) for k in range(len(wl))]
+        a = LineString(coords)  # shapely LineString structure
+        if a.length >= settings['min_length_sl']:
+            contours_long.append(wl)
+    # format points into np.array
+    x_points = np.array([])
+    y_points = np.array([])
+    for k in range(len(contours_long)):
+        x_points = np.append(x_points, contours_long[k][:, 0])
+        y_points = np.append(y_points, contours_long[k][:, 1])
+    contours_array = np.transpose(np.array([x_points, y_points]))
 
-    # find contour with MS algorithm
-    im_sar_buffer = np.copy(im_sar)
-    im_sar_buffer[~im_ref_buffer] = np.nan
-    contours_sar = measure.find_contours(im_sar_buffer, t_sar)
+    shoreline = contours_array
 
-    # only return MNDWI contours and threshold
-    return contours_sar, t_sar
+    return shoreline
