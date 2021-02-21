@@ -262,49 +262,6 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
 
 
 def extract_shorelines_optical(metadata, settings):
-    """
-    Main function to extract shorelines from satellite images
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    metadata: dict
-        contains all the information about the satellite images that were downloaded
-    settings: dict with the following keys
-        'inputs': dict
-            input parameters (sitename, filepath, polygon, dates, sat_list)
-        'cloud_thresh': float
-            value between 0 and 1 indicating the maximum cloud fraction in
-            the cropped image that is accepted
-        'cloud_mask_issue': boolean
-            True if there is an issue with the cloud mask and sand pixels
-            are erroneously being masked on the images
-        'buffer_size': int
-            size of the buffer (m) around the sandy pixels over which the pixels
-            are considered in the thresholding algorithm
-        'min_beach_area': int
-            minimum allowable object area (in metres^2) for the class 'sand',
-            the area is converted to number of connected pixels
-        'min_length_sl': int
-            minimum length (in metres) of shoreline contour to be valid
-        'sand_color': str
-            default', 'dark' (for grey/black sand beaches) or 'bright' (for white sand beaches)
-        'output_epsg': int
-            output spatial reference system as EPSG code
-        'check_detection': bool
-            if True, lets user manually accept/reject the mapped shorelines
-        'save_figure': bool
-            if True, saves a -jpg file for each mapped shoreline
-        'adjust_detection': bool
-            if True, allows user to manually adjust the detected shoreline
-
-    Returns:
-    -----------
-    output: dict
-        contains the extracted shorelines and corresponding dates + metadata
-
-    """
 
     inputs = settings['inputs']
     sitename = inputs['sitename']
@@ -351,8 +308,7 @@ def extract_shorelines_optical(metadata, settings):
             pixel_size = 10
             classifier = joblib.load(os.path.join(filepath_models, 'NN_6classes_S2.pkl'))
 
-        # convert settings['min_beach_area'] and settings['buffer_size'] from metres to pixels
-        buffer_size_pixels = np.ceil(settings['buffer_size'] / pixel_size)
+        # convert settings['min_beach_area'] from  metres to pixels
         min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
 
         print(f'{satname} extracting shorelines for: {len(filenames)} images')
@@ -396,7 +352,7 @@ def extract_shorelines_optical(metadata, settings):
             date = filenames[file_index][:19]
             skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
                                                      image_ref_buffer, image_epsg, georef, settings, date,
-                                                     satname, buffer_size_pixels)
+                                                     satname)
             # if the user decides to skip the image, continue and do not save the mapped shoreline
             if skip_image:
                 continue
@@ -529,49 +485,7 @@ def extract_shorelines_sar(metadata, settings):
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
-                     settings, date, satname, buffer_size_pixels):
-    """
-    Advanced version of show detection where the user can adjust the detected
-    shorelines with a slide bar.
-
-    KV WRL 2020
-
-    Arguments:
-    -----------
-    image_ms: np.array
-        RGB + downsampled NIR and SWIR
-    cloud_mask: np.array
-        2D cloud mask with True where cloud pixels are
-    image_labels: np.array
-        3D image containing a boolean image for each class in the order (sand, swash, water)
-    ref_shoreline_buffer: np.array
-        Binary image containing a buffer around the reference shoreline
-    image_epsg: int
-        spatial reference system of the image from which the contours were extracted
-    georef: np.array
-        vector of 6 elements [Xtr, Xscale, Xshear, Ytr, Yshear, Yscale]
-    date: string
-        date at which the image was taken
-    satname: string
-        indicates the satname (L5,L7,L8 or S2)
-    buffer_size_pixels: int
-        buffer_size converted to number of pixels
-    settings: dict with the following keys
-        'inputs': dict
-            input parameters (sitename, filepath, polygon, dates, sat_list)
-        'output_epsg': int
-            output spatial reference system as EPSG code
-        'save_figure': bool
-            if True, saves a -jpg file for each mapped shoreline
-
-    Returns:
-    -----------
-    skip_image: boolean
-        True if the user wants to skip the image, False otherwise
-    shoreline: np.array
-        array of points with the X and Y coordinates of the shoreline
-
-    """
+                     settings, date, satname):
 
     sitename = settings['inputs']['sitename']
     filepath_data = settings['inputs']['filepath']
@@ -671,18 +585,19 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         class_label = classes[key][0]
         class_colour = classes[key][1]
         class_pixels = mndwi_pixels[class_label]
+
+        alpha = 0.75
+        if key == 'sand':
+            alpha = 0.5
+        if key in ['hard', 'land_1']:
+            alpha = 1.0
+
         if len(class_pixels) > 0:
             bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + binwidth, binwidth)
-            ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key)
+            ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
 
-        # automatically map the shoreline based on the classifier if enough sand pixels
-    if sum(sum(image_labels[:, :, 0])) > 10:
-        # use classification to refine threshold and extract the sand/water interface
-        contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
-    else:
-        print('not enough sand pixels ... using alternative algorithm for shoreline')
-        # find water contours on MNDWI grayscale image
-        contours_mndwi, t_mndwi = find_wl_contours1(image_mndwi, cloud_mask, image_ref_buffer)
+    # use classification to refine threshold and extract the sand/water interface
+    contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_shoreline(contours_mndwi, cloud_mask, georef, image_epsg, settings)
