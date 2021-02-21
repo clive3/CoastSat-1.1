@@ -861,7 +861,7 @@ def obtain_median_image(collection, time_range, area, satname, settings):
         return image_median, sum_img
 
 
-def retrieve_median_image(settings):
+def retrieve_median_optical(settings):
     """
     Downloads all images from Landsat 5, Landsat 7, Landsat 8 and Sentinel-2
     covering the area of interest and acquired between the specified dates.
@@ -1683,6 +1683,7 @@ def create_folder_structure(im_folder, satname):
 
     return filepaths
 
+
 def get_metadata(inputs):
     """
     Gets the metadata from the downloaded images by parsing .txt files located
@@ -1730,7 +1731,7 @@ def get_metadata(inputs):
                 filename = f.readline().split('\t')[1].replace('\n','')
                 acc_georef = float(f.readline().split('\t')[1].replace('\n',''))
                 epsg = int(f.readline().split('\t')[1].replace('\n',''))
-#                median_no = int(f.readline().split('\t')[1].replace('\n', ''))
+                median_no = int(f.readline().split('\t')[1].replace('\n', ''))
             date_str = filename[0:19]
             date = pytz.utc.localize(datetime(int(date_str[:4]),int(date_str[5:7]),
                                               int(date_str[8:10]),int(date_str[11:13]),
@@ -1740,7 +1741,7 @@ def get_metadata(inputs):
             metadata[satname]['acc_georef'].append(acc_georef)
             metadata[satname]['epsg'].append(epsg)
             metadata[satname]['dates'].append(date)
- #           metadata[satname]['median_no'].append(median_no)
+            metadata[satname]['median_no'].append(median_no)
 
     # save a .pkl file containing the metadata dict
     with open(os.path.join(filepath, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:

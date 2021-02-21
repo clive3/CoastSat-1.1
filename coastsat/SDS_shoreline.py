@@ -253,7 +253,7 @@ def calculate_features(im_ms, cloud_mask, im_bool):
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         RGB + downsampled NIR and SWIR
     cloud_mask: np.array
         2D cloud mask with True where cloud pixels are
@@ -320,7 +320,7 @@ def classify_image_NN(im_ms, im_extra, cloud_mask, min_beach_area, clf):
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         Pansharpened RGB + downsampled NIR and SWIR
     im_extra:
         only used for Landsat 7 and 8 where im_extra is the panchromatic band
@@ -328,14 +328,14 @@ def classify_image_NN(im_ms, im_extra, cloud_mask, min_beach_area, clf):
         2D cloud mask with True where cloud pixels are
     min_beach_area: int
         minimum number of pixels that have to be connected to belong to the SAND class
-    clf: joblib object
+    classifier: joblib object
         pre-trained classifier
 
     Returns:    
     -----------
     im_classif: np.array
         2D image containing labels
-    im_labels: np.array of booleans
+    image_labels: np.array of booleans
         3D image containing a boolean image for each class (im_classif == label)
 
     """
@@ -389,7 +389,7 @@ def find_wl_contours1(im_ndwi, cloud_mask, im_ref_buffer):
         Image (2D) with the NDWI (water index)
     cloud_mask: np.ndarray
         2D cloud mask with True where cloud pixels are
-    im_ref_buffer: np.array
+    ref_shoreline_buffer: np.array
         Binary image containing a buffer around the reference shoreline
 
     Returns:    
@@ -426,16 +426,16 @@ def find_wl_contours2(im_ms, im_labels, cloud_mask, buffer_size, im_ref_buffer):
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         RGB + downsampled NIR and SWIR
-    im_labels: np.array
+    image_labels: np.array
         3D image containing a boolean image for each class in the order (sand, swash, water)
     cloud_mask: np.array
         2D cloud mask with True where cloud pixels are
     buffer_size: int
         size of the buffer around the sandy beach over which the pixels are considered in the
         thresholding algorithm.
-    im_ref_buffer: np.array
+    ref_shoreline_buffer: np.array
         binary image containing a buffer around the reference shoreline
 
     Returns:    
@@ -681,11 +681,11 @@ def show_detection(im_ms, cloud_mask, im_labels, shoreline,image_epsg, georef,
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         RGB + downsampled NIR and SWIR
     cloud_mask: np.array
         2D cloud mask with True where cloud pixels are
-    im_labels: np.array
+    image_labels: np.array
         3D image containing a boolean image for each class in the order (sand, swash, water)
     shoreline: np.array
         array of points with the X and Y coordinates of the shoreline
@@ -877,13 +877,13 @@ def adjust_detection(im_ms, cloud_mask, im_labels, im_ref_buffer, image_epsg, ge
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         RGB + downsampled NIR and SWIR
     cloud_mask: np.array
         2D cloud mask with True where cloud pixels are
-    im_labels: np.array
+    image_labels: np.array
         3D image containing a boolean image for each class in the order (sand, swash, water)
-    im_ref_buffer: np.array
+    ref_shoreline_buffer: np.array
         Binary image containing a buffer around the reference shoreline
     image_epsg: int
         spatial reference system of the image from which the contours were extracted

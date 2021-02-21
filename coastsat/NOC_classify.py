@@ -194,7 +194,7 @@ def label_images_4classes(metadata, settings):
                         selector_water.im_bool = np.zeros(
                             (selector_water.array.shape[0], selector_water.array.shape[1]))
                         selector_water.ind = []
-                        # update im_viz and im_labels
+                        # update im_viz and image_labels
                 im_viz = selector_water.array
                 selector_water.im_bool = selector_water.im_bool.astype(bool)
                 im_labels[selector_water.im_bool] = settings['labels']['water']
@@ -268,7 +268,7 @@ def label_images_4classes(metadata, settings):
                         selector_land.implot = implot
                         selector_land.im_bool = np.zeros((selector_land.array.shape[0], selector_land.array.shape[1]))
                         selector_land.ind = []
-                # update im_viz and im_labels
+                # update im_viz and image_labels
                 im_viz = selector_land.array
                 selector_land.im_bool = selector_land.im_bool.astype(bool)
                 im_labels[selector_land.im_bool] = settings['labels']['land_2']
@@ -297,7 +297,7 @@ def label_images_4classes(metadata, settings):
                         selector_land.implot = implot
                         selector_land.im_bool = np.zeros((selector_land.array.shape[0], selector_land.array.shape[1]))
                         selector_land.ind = []
-                # update im_labels
+                # update image_labels
                 selector_land.im_bool = selector_land.im_bool.astype(bool)
                 im_labels[selector_land.im_bool] = settings['labels']['land_3']
 
@@ -630,7 +630,7 @@ def label_images_5classes(metadata, settings):
                         selector_water.im_bool = np.zeros(
                             (selector_water.array.shape[0], selector_water.array.shape[1]))
                         selector_water.ind = []
-                        # update im_viz and im_labels
+                        # update im_viz and image_labels
                 im_viz = selector_water.array
                 selector_water.im_bool = selector_water.im_bool.astype(bool)
                 im_labels[selector_water.im_bool] = settings['labels']['water']
@@ -704,7 +704,7 @@ def label_images_5classes(metadata, settings):
                         selector_land.implot = implot
                         selector_land.im_bool = np.zeros((selector_land.array.shape[0], selector_land.array.shape[1]))
                         selector_land.ind = []
-                # update im_viz and im_labels
+                # update im_viz and image_labels
                 im_viz = selector_land.array
                 selector_land.im_bool = selector_land.im_bool.astype(bool)
                 im_labels[selector_land.im_bool] = settings['labels']['land_2']
@@ -733,7 +733,7 @@ def label_images_5classes(metadata, settings):
                         selector_land.implot = implot
                         selector_land.im_bool = np.zeros((selector_land.array.shape[0], selector_land.array.shape[1]))
                         selector_land.ind = []
-                # update im_labels
+                # update image_labels
                 selector_land.im_bool = selector_land.im_bool.astype(bool)
                 im_labels[selector_land.im_bool] = settings['labels']['land_3']
 
@@ -1067,7 +1067,7 @@ def label_images_6classes(metadata, settings):
                         selector_water.im_bool = np.zeros(
                             (selector_water.array.shape[0], selector_water.array.shape[1]))
                         selector_water.ind = []
-                        # update im_viz and im_labels
+                        # update im_viz and image_labels
                 im_viz = selector_water.array
                 selector_water.im_bool = selector_water.im_bool.astype(bool)
                 im_labels[selector_water.im_bool] = settings['labels']['water']
@@ -1141,7 +1141,7 @@ def label_images_6classes(metadata, settings):
                         selector_land.implot = implot
                         selector_land.im_bool = np.zeros((selector_land.array.shape[0], selector_land.array.shape[1]))
                         selector_land.ind = []
-                # update im_viz and im_labels
+                # update im_viz and image_labels
                 im_viz = selector_land.array
                 selector_land.im_bool = selector_land.im_bool.astype(bool)
                 im_labels[selector_land.im_bool] = settings['labels']['land_2']
@@ -1170,7 +1170,7 @@ def label_images_6classes(metadata, settings):
                         selector_land.implot = implot
                         selector_land.im_bool = np.zeros((selector_land.array.shape[0], selector_land.array.shape[1]))
                         selector_land.ind = []
-                # update im_labels
+                # update image_labels
                 selector_land.im_bool = selector_land.im_bool.astype(bool)
                 im_labels[selector_land.im_bool] = settings['labels']['land_3']
 

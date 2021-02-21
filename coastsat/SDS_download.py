@@ -812,7 +812,7 @@ def merge_overlapping_images(metadata,inputs):
                     # mask the 60m .tif file (im_QA)
                     SDS_tools.mask_raster(fn_im[index][2], mask60)   
                     # make a figure for quality control/debugging
-                    # im_RGB = SDS_preprocess.rescale_image_intensity(im_ms[:,:,[2,1,0]], cloud_mask, 99.9)
+                    # im_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:,:,[2,1,0]], cloud_mask, 99.9)
                     # fig,ax= plt.subplots(2,3,tight_layout=True)
                     # ax[0,0].imshow(im_RGB)
                     # ax[0,0].set_title('RGB original')

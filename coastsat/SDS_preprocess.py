@@ -54,7 +54,7 @@ def preprocess_single(fn, satname, cloud_mask_issue):
 
     Returns:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         3D array containing the pansharpened/down-sampled bands (B,G,R,NIR,SWIR1)
     georef: np.array
         vector of 6 elements [Xtr, Xscale, Xshear, Ytr, Yshear, Yscale] defining the
@@ -434,7 +434,7 @@ def pansharpen(im_ms, im_pan, cloud_mask):
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         Multispectral image to pansharpen (3D)
     im_pan: np.array
         Panchromatic band (2D)
@@ -537,7 +537,7 @@ def create_jpg(im_ms, cloud_mask, date, satname, filepath):
 
     Arguments:
     -----------
-    im_ms: np.array
+    image_ms: np.array
         3D array containing the pansharpened/down-sampled bands (B,G,R,NIR,SWIR1)
     cloud_mask: np.array
         2D cloud mask with True where cloud pixels are
@@ -554,8 +554,8 @@ def create_jpg(im_ms, cloud_mask, date, satname, filepath):
 
     # rescale image intensity for display purposes
     im_RGB = rescale_image_intensity(im_ms[:,:,[2,1,0]], cloud_mask, 99.9)
-#    im_NIR = rescale_image_intensity(im_ms[:,:,3], cloud_mask, 99.9)
-#    im_SWIR = rescale_image_intensity(im_ms[:,:,4], cloud_mask, 99.9)
+#    im_NIR = rescale_image_intensity(image_ms[:,:,3], cloud_mask, 99.9)
+#    im_SWIR = rescale_image_intensity(image_ms[:,:,4], cloud_mask, 99.9)
 
     # make figure (just RGB)
     fig = plt.figure()
