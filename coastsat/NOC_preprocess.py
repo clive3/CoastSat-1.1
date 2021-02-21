@@ -9,3 +9,22 @@ def preprocess_sar(file_name, satname):
     sar_stack = np.stack(bands, 2)
 
     return sar_stack, georef
+
+
+def get_reference_shoreline(inputs):
+
+    sitename = inputs['sitename']
+    filepath_data = inputs['filepath']
+
+    # check if reference shoreline already exists in the corresponding folder
+    filepath = os.path.join(filepath_data, sitename)
+    filename = sitename + '_reference_shoreline.pkl'
+    # if it exist, load it and return it
+    if filename in os.listdir(filepath):
+        print('Reference shoreline already exists and was loaded')
+        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'rb') as f:
+            refsl = pickle.load(f)
+        return refsl
+    else:
+        return np.zeros(1)
+

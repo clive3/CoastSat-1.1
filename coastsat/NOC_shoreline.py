@@ -1,3 +1,5 @@
+from scipy.ndimage import gaussian_filter
+
 from coastsat.SDS_shoreline import *
 
 from coastsat import NOC_preprocess, NOC_tools
@@ -443,8 +445,11 @@ def extract_shorelines_sar(metadata, settings):
         buffer_shape = (sar_image.shape[0], sar_image.shape[1])
 
         # calculate a buffer around the reference shoreline (if any has been digitised)
-        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
-                                                pixel_size, settings)
+        if settings['reference_shoreline'].any():
+            image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+                                                    pixel_size, settings)
+        else:
+            image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
         # find the shoreline interactively
         date = filename[:19]
@@ -728,6 +733,9 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
         image_pol = np.copy(sar_image[:,:,1])
         colour = [1, 1, 0, 1]
 
+    if inputs['sigma'] != 0:
+        image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
+
     # and the vectors needed for the histogram
     cols = sar_image.shape[0]
     rows = sar_image.shape[1]
@@ -760,17 +768,17 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # plot image 1 (RGB)
     ax1.imshow(image_pol)
     ax1.axis('off')
-    ax1.set_title(sitename, fontsize=12)
+    ax1.set_title(sitename, fontweight='bold', fontsize=16)
 
     # plot image 1 (grey)
     ax2.imshow(image_pol, cmap='gray')
     ax2.axis('off')
-    ax2.set_title('VV', fontsize=12)
+    ax2.set_title(polarisation, fontweight='bold', fontsize=16)
 
     # plot image 3 (blue/red)
     ax3.imshow(image_pol, cmap='bwr')
     ax3.axis('off')
-    ax3.set_title('VH', fontsize=12)
+    ax3.set_title(polarisation, fontweight='bold', fontsize=16)
 
     # plot histogram of sigma values
     ax4.set_facecolor('0.75')
@@ -786,6 +794,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
 
     # process the water contours into a shoreline
     shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
+
     # convert shoreline to pixels
     if len(shoreline) > 0:
         sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
@@ -884,6 +893,11 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # don't close the figure window, but remove all axes and settings, ready for next plot
     for ax in fig.axes:
         ax.clear()
+
+    if inputs['sigma'] != 0:
+        filepath = os.path.join(inputs['filepath'], sitename)
+        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
+            pickle.dump(shoreline, f)
 
     return skip_image, shoreline
 
