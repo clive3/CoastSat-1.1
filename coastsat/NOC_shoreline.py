@@ -249,7 +249,8 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
 
     # threshold the sand/water intensities
     int_all = np.append(int_land,int_sea, axis=0)
-    t_mwi = filters.threshold_otsu(int_all[:,0])
+    int_all = int_all[~np.isnan(int_all)]
+    t_mwi = filters.threshold_otsu(int_all)
 
     # find contour with MS algorithm
     image_mwi_buffer = np.copy(image_mwi)
