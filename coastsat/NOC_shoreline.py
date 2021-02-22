@@ -87,7 +87,7 @@ def extract_shorelines_optical(metadata, settings):
 
             # calculate a buffer around the reference shoreline (if any has been digitised)
             image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
-                                                    pixel_size, settings)
+                                                       pixel_size, settings)
 
             # classify image with NN classifier
             image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
@@ -135,56 +135,6 @@ def extract_shorelines_optical(metadata, settings):
         pickle.dump(output, f)
 
     return output
-
-
-def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
-
-    nrows = cloud_mask.shape[0]
-    ncols = cloud_mask.shape[1]
-
-    # calculate Normalized Difference Modified Water Index (SWIR - G)
-    image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
-    # calculate Normalized Difference Modified Water Index (NIR - G)
-    image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
-    # stack indices together
-    image_ind = np.stack((image_wi, image_mwi), axis=-1)
-    vec_ind = image_ind.reshape(nrows*ncols,2)
-
-    # reshape labels into vectors
-    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
-    vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
-    vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
-    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
-    vec_all_land = np.logical_or(np.logical_or((np.logical_or(vec_land1, vec_land2)),
-                                               vec_land3), vec_sand)
-
-    vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
-    vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
-
-    # select land and water pixels that are within the buffer
-    int_land = vec_ind[np.logical_and(vec_image_ref_buffer,vec_all_land),:]
-    int_sea = vec_ind[np.logical_and(vec_image_ref_buffer,vec_water),:]
-
-    # make sure both classes have the same number of pixels before thresholding
-    if len(int_land) > 0 and len(int_sea) > 0:
-        if np.argmin([int_land.shape[0],int_sea.shape[0]]) == 1:
-            int_land = int_land[np.random.choice(int_land.shape[0],int_sea.shape[0], replace=False),:]
-        else:
-            int_sea = int_sea[np.random.choice(int_sea.shape[0],int_land.shape[0], replace=False),:]
-
-    # threshold the sand/water intensities
-    int_all = np.append(int_land,int_sea, axis=0)
-    int_all = int_all[~np.isnan(int_all)]
-    t_mwi = filters.threshold_otsu(int_all)
-
-    # find contour with MS algorithm
-    image_mwi_buffer = np.copy(image_mwi)
-    image_mwi_buffer[~ref_shoreline_buffer] = np.nan
-    contours_mwi = measure.find_contours(image_mwi_buffer, level=t_mwi, mask=ref_shoreline_buffer)
-    # remove contour points that are NaNs (around clouds)
-    contours_mwi = process_contours(contours_mwi)
-
-    return contours_mwi, t_mwi
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
@@ -407,6 +357,56 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     return skip_image, shoreline
 
 
+def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
+
+    nrows = cloud_mask.shape[0]
+    ncols = cloud_mask.shape[1]
+
+    # calculate Normalized Difference Modified Water Index (SWIR - G)
+    image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
+    # calculate Normalized Difference Modified Water Index (NIR - G)
+    image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
+    # stack indices together
+    image_ind = np.stack((image_wi, image_mwi), axis=-1)
+    vec_ind = image_ind.reshape(nrows*ncols,2)
+
+    # reshape labels into vectors
+    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
+    vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
+    vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
+    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
+    vec_all_land = np.logical_or(np.logical_or((np.logical_or(vec_land1, vec_land2)),
+                                               vec_land3), vec_sand)
+
+    vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
+    vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
+
+    # select land and water pixels that are within the buffer
+    int_land = vec_ind[np.logical_and(vec_image_ref_buffer,vec_all_land),:]
+    int_sea = vec_ind[np.logical_and(vec_image_ref_buffer,vec_water),:]
+
+    # make sure both classes have the same number of pixels before thresholding
+    if len(int_land) > 0 and len(int_sea) > 0:
+        if np.argmin([int_land.shape[0],int_sea.shape[0]]) == 1:
+            int_land = int_land[np.random.choice(int_land.shape[0],int_sea.shape[0], replace=False),:]
+        else:
+            int_sea = int_sea[np.random.choice(int_sea.shape[0],int_land.shape[0], replace=False),:]
+
+    # threshold the sand/water intensities
+    int_all = np.append(int_land,int_sea, axis=0)
+    int_all = int_all[~np.isnan(int_all)]
+    t_mwi = filters.threshold_otsu(int_all)
+
+    # find contour with MS algorithm
+    image_mwi_buffer = np.copy(image_mwi)
+    image_mwi_buffer[~ref_shoreline_buffer] = np.nan
+    contours_mwi = measure.find_contours(image_mwi_buffer, level=t_mwi, mask=ref_shoreline_buffer)
+    # remove contour points that are NaNs (around clouds)
+    contours_mwi = process_contours(contours_mwi)
+
+    return contours_mwi, t_mwi
+
+
 
 def extract_shorelines_sar(metadata, settings):
 
@@ -457,7 +457,7 @@ def extract_shorelines_sar(metadata, settings):
 
         buffer_shape = (sar_image.shape[0], sar_image.shape[1])
 
-        # calculate a buffer around the reference shoreline (if any has been digitised)
+        # calculate a buffer around the reference shoreline if it has already been generated
         if settings['reference_shoreline'].any():
             image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                     pixel_size, settings)
@@ -526,7 +526,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
         image_pol = np.copy(sar_image[:,:,1])
         colour = [1, 1, 0, 1]
 
-    if not inputs['reference_shoreline']:
+    if inputs['create_reference_shoreline']:
         image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
 
     # and the vectors needed for the histogram
@@ -688,7 +688,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     for ax in fig.axes:
         ax.clear()
 
-    if not inputs['reference_shoreline']:
+    if inputs['create_reference_shoreline']:
         filepath = os.path.join(inputs['filepath'], sitename)
         with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(shorelines, f)
