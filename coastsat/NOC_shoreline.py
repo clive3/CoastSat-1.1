@@ -458,8 +458,6 @@ def extract_shorelines_sar(metadata, settings):
         skip_image, shorelines = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
                                                      settings, date,  satname)
 
-        print(f'@@@ {len(shorelines)}')
-
         # if the user decides to skip the image, continue and do not save the mapped shoreline
         if skip_image:
             continue
@@ -515,7 +513,6 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # buffer MNDWI using reference shoreline
     image_mndwi_buffer = np.copy(image_mndwi)
     image_mndwi_buffer[~image_ref_buffer] = np.nan
-
 
     # for each class add it to image_classifieried and
     # extract the MDWI values for all pixels in that class
