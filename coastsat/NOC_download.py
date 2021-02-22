@@ -23,7 +23,7 @@ def retrieve_median_sar(inputs):
     # create subfolder structure to store the different polarisations
     filepaths = create_folder_structure(im_folder, 'S1')
 
-    print('\nDownloading images:')
+    print('\ndownloading images...')
 
     # initialise connection with GEE server
     ee.Initialize()
@@ -41,14 +41,12 @@ def retrieve_median_sar(inputs):
 #    median_no = len(img_list.getInfo())
     median_no = 65
 
-    print('Median processed')
+    print('\ncalculating median ...')
 
     metadata = median_img.getInfo()
 
     median_filename = im_date + '_S1_' + inputs['sitename'] + '_median' + suffix
     get_sar_url(median_img, ee.Number(pixel_size), inputs['polygon'], filepaths[1])
-
-    print('Downloaded')
 
     # rename the file as the image is downloaded as 'data.tif'
     # locate download
@@ -914,7 +912,7 @@ def retrieve_median_optical(settings):
     im_folder = os.path.join(inputs['filepath'], inputs['sitename'])
     if not os.path.exists(im_folder): os.makedirs(im_folder)
 
-    print('\nDownloading images:')
+    print('\ndownloading images ...')
     suffix = '.tif'
     satname = inputs['sat_list']
 
@@ -1001,7 +999,6 @@ def retrieve_median_optical(settings):
                                                   inputs['sat_list'],
                                                   settings)
 
-        print('Median Processed')
         # extract year
         first_date = inputs["dates"][0]
         year = first_date[:-6]
@@ -1162,7 +1159,7 @@ def retrieve_median_optical(settings):
                                                   inputs['dates'],
                                                   ee.Geometry.Polygon(inputs['polygon']), inputs['sat_list'],
                                                   settings)
-        print('Median processed')
+        print('\ncalculating median image')
 
         im_date = settings['inputs']['dates'][0] + '-00-00-00'
         # extract year
@@ -1221,13 +1218,6 @@ def retrieve_median_optical(settings):
             os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
 
         # metadata for .txt file
-#        filename_txt = im_fn[''].replace('.tif', '.txt')
-#        metadict = {'filename': im_fn[''],
-#                    'epsg': metadata['bands'][0]['crs'][5:],
-#                    'start_date': inputs['dates'][0],
-#                    'end_date': inputs['dates'][1],
-#                    'median_no': sum_img}
-
         filename_txt = im_fn['10m'].replace('_10m', '').replace('tif', 'txt')
         metadict = {'filename': im_fn['10m'],
                     'acc_georef': 1,
@@ -1658,24 +1648,19 @@ def create_folder_structure(im_folder, satname):
     # one folder for the metadata (common to all satellites)
     filepaths = [os.path.join(im_folder, satname, 'meta')]
 
-    if satname == 'S1':
 
-#        filepaths.append(os.path.join(im_folder, satname, 'VV'))
-#        filepaths.append(os.path.join(im_folder, satname, 'VH'))
+    # subfolders depending on satellite mission
+    if satname == 'L5':
+        filepaths.append(os.path.join(im_folder, satname, '30m'))
+    elif satname in ['L7','L8']:
+        filepaths.append(os.path.join(im_folder, satname, 'pan'))
+        filepaths.append(os.path.join(im_folder, satname, 'ms'))
+    elif satname in ['S2']:
+        filepaths.append(os.path.join(im_folder, satname, '10m'))
+        filepaths.append(os.path.join(im_folder, satname, '20m'))
+        filepaths.append(os.path.join(im_folder, satname, '60m'))
+    elif satname == 'S1':
         filepaths.append(os.path.join(im_folder, satname))
-
-    else:
-
-        # subfolders depending on satellite mission
-        if satname == 'L5':
-            filepaths.append(os.path.join(im_folder, satname, '30m'))
-        elif satname in ['L7','L8']:
-            filepaths.append(os.path.join(im_folder, satname, 'pan'))
-            filepaths.append(os.path.join(im_folder, satname, 'ms'))
-        elif satname in ['S2']:
-            filepaths.append(os.path.join(im_folder, satname, '10m'))
-            filepaths.append(os.path.join(im_folder, satname, '20m'))
-            filepaths.append(os.path.join(im_folder, satname, '60m'))
 
     # create the sub-folders if they don't exist already
     for fp in filepaths:
