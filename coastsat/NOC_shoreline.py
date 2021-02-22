@@ -1,275 +1,17 @@
 from scipy.ndimage import gaussian_filter
 
+from coastsat.NOC_classify import classify_image_NN
 from coastsat.SDS_shoreline import *
 
 from coastsat import NOC_preprocess, NOC_tools
 
-from utils.print_utils import printError, printSuccess, printLine, printWarning
-
-
-def classify_image_NN_4classes(image_ms, cloud_mask, min_beach_area, classifier):
-    """
-    Classifies every pixel in the image in one of 4 classes:
-        - sand                                          --> label = 1
-        - whitewater (breaking waves and swash)         --> label = 2
-        - water                                         --> label = 3
-        - other (vegetation, buildings, rocks...)       --> label = 0
-
-    The classifier is a Neural Network that is already trained.
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    image_ms: np.array
-        Pansharpened RGB + downsampled NIR and SWIR
-    image_extra:
-        only used for Landsat 7 and 8 where image_extra is the panchromatic band
-    cloud_mask: np.array
-        2D cloud mask with True where cloud pixels are
-    min_beach_area: int
-        minimum number of pixels that have to be connected to belong to the SAND class
-    classifier: joblib object
-        pre-trained classifier
-
-    Returns:
-    -----------
-    image_classifier: np.array
-        2D image containing labels
-    image_labels: np.array of booleans
-        3D image containing a boolean image for each class (image_classifier == label)
-
-    """
-
-    # calculate features
-    vec_features = calculate_features(image_ms, cloud_mask, np.ones(cloud_mask.shape).astype(bool))
-    vec_features[np.isnan(vec_features)] = 1e-9 # NaN values are create when std is too close to 0
-
-    # remove NaNs and cloudy pixels
-    vec_cloud = cloud_mask.reshape(cloud_mask.shape[0]*cloud_mask.shape[1])
-    vec_nan = np.any(np.isnan(vec_features), axis=1)
-    vec_mask = np.logical_or(vec_cloud, vec_nan)
-    vec_features = vec_features[~vec_mask, :]
-
-    # classify pixels
-    labels = classifier.predict(vec_features)
-
-    # recompose image
-    vec_classifier = np.nan*np.ones((cloud_mask.shape[0]*cloud_mask.shape[1]))
-    vec_classifier[~vec_mask] = labels
-    image_classifier = vec_classifier.reshape((cloud_mask.shape[0], cloud_mask.shape[1]))
-
-    # create a stack of boolean images for each label
-    image_land1 = image_classifier == 1
-    image_land2 = image_classifier == 2
-    image_land3 = image_classifier == 3
-    image_ww = image_classifier == 4
-    image_water = image_classifier == 5
-
-    # remove small patches of sand or water that could be around the image (usually noise)
-    image_land1 = morphology.remove_small_objects(image_land1, min_size=min_beach_area, connectivity=2)
-    image_land2 = morphology.remove_small_objects(image_land2, min_size=min_beach_area, connectivity=2)
-    image_land3 = morphology.remove_small_objects(image_land3, min_size=min_beach_area, connectivity=2)
-    image_water = morphology.remove_small_objects(image_water, min_size=min_beach_area, connectivity=2)
-
-    image_labels = np.stack((image_land1, image_land2, image_land3, image_ww, image_water), axis=-1)
-
-    return image_classifier, image_labels
-
-def classify_image_NN_5classes(image_ms, cloud_mask, min_beach_area, classifier):
-    """
-    Classifies every pixel in the image in one of 4 classes:
-        - sand                                          --> label = 1
-        - whitewater (breaking waves and swash)         --> label = 2
-        - water                                         --> label = 3
-        - other (vegetation, buildings, rocks...)       --> label = 0
-
-    The classifier is a Neural Network that is already trained.
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    image_ms: np.array
-        Pansharpened RGB + downsampled NIR and SWIR
-    image_extra:
-        only used for Landsat 7 and 8 where image_extra is the panchromatic band
-    cloud_mask: np.array
-        2D cloud mask with True where cloud pixels are
-    min_beach_area: int
-        minimum number of pixels that have to be connected to belong to the SAND class
-    classifier: joblib object
-        pre-trained classifier
-
-    Returns:
-    -----------
-    image_classifier: np.array
-        2D image containing labels
-    image_labels: np.array of booleans
-        3D image containing a boolean image for each class (image_classifier == label)
-
-    """
-
-    # calculate features
-    vec_features = calculate_features(image_ms, cloud_mask, np.ones(cloud_mask.shape).astype(bool))
-    vec_features[np.isnan(vec_features)] = 1e-9 # NaN values are create when std is too close to 0
-
-    # remove NaNs and cloudy pixels
-    vec_cloud = cloud_mask.reshape(cloud_mask.shape[0]*cloud_mask.shape[1])
-    vec_nan = np.any(np.isnan(vec_features), axis=1)
-    vec_mask = np.logical_or(vec_cloud, vec_nan)
-    vec_features = vec_features[~vec_mask, :]
-
-    # classify pixels
-    labels = classifier.predict(vec_features)
-
-    # recompose image
-    vec_classifier = np.nan*np.ones((cloud_mask.shape[0]*cloud_mask.shape[1]))
-    vec_classifier[~vec_mask] = labels
-    image_classifier = vec_classifier.reshape((cloud_mask.shape[0], cloud_mask.shape[1]))
-
-    # create a stack of boolean images for each label
-    image_land1 = image_classifier == 1
-    image_land2 = image_classifier == 2
-    image_land3 = image_classifier == 3
-    image_ww = image_classifier == 4
-    image_water = image_classifier == 5
-
-    # remove small patches of sand or water that could be around the image (usually noise)
-    image_land1 = morphology.remove_small_objects(image_land1, min_size=min_beach_area, connectivity=2)
-    image_land2 = morphology.remove_small_objects(image_land2, min_size=min_beach_area, connectivity=2)
-    image_land3 = morphology.remove_small_objects(image_land3, min_size=min_beach_area, connectivity=2)
-    image_water = morphology.remove_small_objects(image_water, min_size=min_beach_area, connectivity=2)
-
-    image_labels = np.stack((image_land1, image_land2, image_land3, image_ww, image_water), axis=-1)
-
-    return image_classifier, image_labels
-
-def classify_image_NN_6classes(image_ms, cloud_mask, min_beach_area, classifier):
-    """
-    Classifies every pixel in the image in one of 4 classes:
-        - sand                                          --> label = 1
-        - whitewater (breaking waves and swash)         --> label = 2
-        - water                                         --> label = 3
-        - other (vegetation, buildings, rocks...)       --> label = 0
-
-    The classifier is a Neural Network that is already trained.
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    image_ms: np.array
-        Pansharpened RGB + downsampled NIR and SWIR
-    image_extra:
-        only used for Landsat 7 and 8 where image_extra is the panchromatic band
-    cloud_mask: np.array
-        2D cloud mask with True where cloud pixels are
-    min_beach_area: int
-        minimum number of pixels that have to be connected to belong to the SAND class
-    classifier: joblib object
-        pre-trained classifier
-
-    Returns:
-    -----------
-    image_classifier: np.array
-        2D image containing labels
-    image_labels: np.array of booleans
-        3D image containing a boolean image for each class (image_classifier == label)
-
-    """
-
-    # calculate features
-    vec_features = calculate_features(image_ms, cloud_mask, np.ones(cloud_mask.shape).astype(bool))
-    vec_features[np.isnan(vec_features)] = 1e-9 # NaN values are create when std is too close to 0
-
-    # remove NaNs and cloudy pixels
-    vec_cloud = cloud_mask.reshape(cloud_mask.shape[0]*cloud_mask.shape[1])
-    vec_nan = np.any(np.isnan(vec_features), axis=1)
-    vec_mask = np.logical_or(vec_cloud, vec_nan)
-    vec_features = vec_features[~vec_mask, :]
-
-    # classify pixels
-    labels = classifier.predict(vec_features)
-
-    # recompose image
-    vec_classifier = np.nan*np.ones((cloud_mask.shape[0]*cloud_mask.shape[1]))
-    vec_classifier[~vec_mask] = labels
-    image_classifier = vec_classifier.reshape((cloud_mask.shape[0], cloud_mask.shape[1]))
-
-    # create a stack of boolean images for each label
-    image_land1 = image_classifier == 1
-    image_land2 = image_classifier == 2
-    image_land3 = image_classifier == 3
-    image_ww = image_classifier == 4
-    image_water = image_classifier == 5
-    image_sand = image_classifier == 6
-
-    # remove small patches of sand or water that could be around the image (usually noise)
-    image_land1 = morphology.remove_small_objects(image_land1, min_size=min_beach_area, connectivity=2)
-    image_land2 = morphology.remove_small_objects(image_land2, min_size=min_beach_area, connectivity=2)
-    image_land3 = morphology.remove_small_objects(image_land3, min_size=min_beach_area, connectivity=2)
-    image_water = morphology.remove_small_objects(image_water, min_size=min_beach_area, connectivity=2)
-
-    image_labels = np.stack((image_land1, image_land2, image_land3, image_ww, image_water, image_sand), axis=-1)
-
-    return image_classifier, image_labels
-
-
-def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
-
-    nrows = cloud_mask.shape[0]
-    ncols = cloud_mask.shape[1]
-
-    # calculate Normalized Difference Modified Water Index (SWIR - G)
-    image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
-    # calculate Normalized Difference Modified Water Index (NIR - G)
-    image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
-    # stack indices together
-    image_ind = np.stack((image_wi, image_mwi), axis=-1)
-    vec_ind = image_ind.reshape(nrows*ncols,2)
-
-    # reshape labels into vectors
-    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
-    vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
-    vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
-    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
-    vec_all_land = np.logical_or(np.logical_or((np.logical_or(vec_land1, vec_land2)),
-                                               vec_land3), vec_sand)
-
-    vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
-    vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
-
-    # select land and water pixels that are within the buffer
-    int_land = vec_ind[np.logical_and(vec_image_ref_buffer,vec_all_land),:]
-    int_sea = vec_ind[np.logical_and(vec_image_ref_buffer,vec_water),:]
-
-    # make sure both classes have the same number of pixels before thresholding
-    if len(int_land) > 0 and len(int_sea) > 0:
-        if np.argmin([int_land.shape[0],int_sea.shape[0]]) == 1:
-            int_land = int_land[np.random.choice(int_land.shape[0],int_sea.shape[0], replace=False),:]
-        else:
-            int_sea = int_sea[np.random.choice(int_sea.shape[0],int_land.shape[0], replace=False),:]
-
-    # threshold the sand/water intensities
-    int_all = np.append(int_land,int_sea, axis=0)
-    int_all = int_all[~np.isnan(int_all)]
-    t_mwi = filters.threshold_otsu(int_all)
-
-    # find contour with MS algorithm
-    image_mwi_buffer = np.copy(image_mwi)
-    image_mwi_buffer[~ref_shoreline_buffer] = np.nan
-    contours_mwi = measure.find_contours(image_mwi_buffer, level=t_mwi, mask=ref_shoreline_buffer)
-    # remove contour points that are NaNs (around clouds)
-    contours_mwi = process_contours(contours_mwi)
-
-    return contours_mwi, t_mwi
 
 
 def extract_shorelines_optical(metadata, settings):
 
     inputs = settings['inputs']
     sitename = inputs['sitename']
+    classes = settings['classes']
 
     filepath_data = inputs['filepath']
     filepath_models = os.path.join(os.getcwd(), 'classification', 'models')
@@ -349,9 +91,9 @@ def extract_shorelines_optical(metadata, settings):
             image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
                                                     pixel_size, settings)
 
-            # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
-            image_classifier, image_labels = classify_image_NN_6classes(image_ms, cloud_mask,
-                                                      min_beach_area_pixels, classifier)
+            # classify image with NN classifier
+            image_classifier, image_labels = classify_image_NN(image_ms, classes, cloud_mask,
+                                                               min_beach_area_pixels, classifier)
 
             # find the shoreline interactively
             date = filenames[file_index][:19]
@@ -397,100 +139,55 @@ def extract_shorelines_optical(metadata, settings):
     return output
 
 
-def extract_shorelines_sar(metadata, settings):
 
-    inputs = settings['inputs']
+def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
 
-    sitename = inputs['sitename']
-    base_filepath = inputs['filepath']
-    satname = inputs['sat_list'][0]
-    pixel_size = inputs['pixel_size']
+    nrows = cloud_mask.shape[0]
+    ncols = cloud_mask.shape[1]
 
-    # initialise output structure
-    output = {}
-    # create a subfolder to store the .jpg images showing the detection
-    filepath_jpg = os.path.join(base_filepath, sitename, 'jpg_files', 'detection')
-    if not os.path.exists(filepath_jpg):
-        os.makedirs(filepath_jpg)
-    # close all open figures
-    plt.close('all')
+    # calculate Normalized Difference Modified Water Index (SWIR - G)
+    image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
+    # calculate Normalized Difference Modified Water Index (NIR - G)
+    image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
+    # stack indices together
+    image_ind = np.stack((image_wi, image_mwi), axis=-1)
+    vec_ind = image_ind.reshape(nrows*ncols,2)
 
-    print('Mapping shorelines:')
+    # reshape labels into vectors
+    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
+    vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
+    vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
+    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
+    vec_all_land = np.logical_or(np.logical_or((np.logical_or(vec_land1, vec_land2)),
+                                               vec_land3), vec_sand)
 
-    # get images
-    data_path = NOC_tools.get_filepath(settings['inputs'], satname)
-    filenames = metadata[satname]['filenames']
+    vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
+    vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
 
-    # initialise the output variables
-    output_timestamp = []  # datetime at which the image was acquired (UTC time)
-    output_shoreline = []  # vector of shoreline points
-    output_filename = []  # filename of the images from which the shorelines where derived
-    output_geoaccuracy = []  # georeferencing accuracy of the images
-    output_median_no = []
+    # select land and water pixels that are within the buffer
+    int_land = vec_ind[np.logical_and(vec_image_ref_buffer,vec_all_land),:]
+    int_sea = vec_ind[np.logical_and(vec_image_ref_buffer,vec_water),:]
 
-    # loop through the images
-    for i in range(len(filenames)):
-
-        print('\r%s:   %d%%' % (satname, int(((i + 1) / len(filenames)) * 100)))
-        print()
-
-        # get image filename
-        filename = filenames[i]
-
-        file_path = os.path.join(data_path, filename)
-
-        sar_image, georef = NOC_preprocess.preprocess_sar(file_path, satname)
-
-        # get image spatial reference system (epsg code) from metadata dict
-        image_epsg = metadata[satname]['epsg'][i]
-
-        buffer_shape = (sar_image.shape[0], sar_image.shape[1])
-
-        # calculate a buffer around the reference shoreline (if any has been digitised)
-        if settings['reference_shoreline'].any():
-            image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
-                                                    pixel_size, settings)
+    # make sure both classes have the same number of pixels before thresholding
+    if len(int_land) > 0 and len(int_sea) > 0:
+        if np.argmin([int_land.shape[0],int_sea.shape[0]]) == 1:
+            int_land = int_land[np.random.choice(int_land.shape[0],int_sea.shape[0], replace=False),:]
         else:
-            image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
+            int_sea = int_sea[np.random.choice(int_sea.shape[0],int_land.shape[0], replace=False),:]
 
-        # find the shoreline interactively
-        date = filename[:19]
-        skip_image, shorelines = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
-                                                     settings, date,  satname)
+    # threshold the sand/water intensities
+    int_all = np.append(int_land,int_sea, axis=0)
+    int_all = int_all[~np.isnan(int_all)]
+    t_mwi = filters.threshold_otsu(int_all)
 
-        # if the user decides to skip the image, continue and do not save the mapped shoreline
-        if skip_image:
-            continue
+    # find contour with MS algorithm
+    image_mwi_buffer = np.copy(image_mwi)
+    image_mwi_buffer[~ref_shoreline_buffer] = np.nan
+    contours_mwi = measure.find_contours(image_mwi_buffer, level=t_mwi, mask=ref_shoreline_buffer)
+    # remove contour points that are NaNs (around clouds)
+    contours_mwi = process_contours(contours_mwi)
 
-        # append to output variables
-        output_timestamp.append(metadata[satname]['dates'][i])
-        output_shoreline.append(shorelines)
-        output_filename.append(filenames[i])
-        output_geoaccuracy.append(metadata[satname]['acc_georef'][i])
-        output_median_no.append(metadata[satname]['median_no'][i])
-
-    # create dictionnary of output
-    output[satname] = {
-        'dates': output_timestamp,
-        'shorelines': output_shoreline,
-        'filename': output_filename,
-        'geoaccuracy': output_geoaccuracy,
-        'median_no': output_median_no
-    }
-    print('')
-
-    # close figure window if still open
-    if plt.get_fignums():
-        plt.close()
-
-    output = SDS_tools.merge_output(output)
-
-    # save outputput structure as output.pkl
-#    filepath = os.path.join(base_filepath, sitename)
-#    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
-#        pickle.dump(output, f)
-
-    return output
+    return contours_mwi, t_mwi
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
@@ -713,6 +410,102 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     return skip_image, shoreline
 
 
+def extract_shorelines_sar(metadata, settings):
+
+    inputs = settings['inputs']
+
+    sitename = inputs['sitename']
+    base_filepath = inputs['filepath']
+    satname = inputs['sat_list'][0]
+    pixel_size = inputs['pixel_size']
+
+    # initialise output structure
+    output = {}
+    # create a subfolder to store the .jpg images showing the detection
+    filepath_jpg = os.path.join(base_filepath, sitename, 'jpg_files', 'detection')
+    if not os.path.exists(filepath_jpg):
+        os.makedirs(filepath_jpg)
+    # close all open figures
+    plt.close('all')
+
+    print('Mapping shorelines:')
+
+    # get images
+    data_path = NOC_tools.get_filepath(settings['inputs'], satname)
+    filenames = metadata[satname]['filenames']
+
+    # initialise the output variables
+    output_timestamp = []  # datetime at which the image was acquired (UTC time)
+    output_shoreline = []  # vector of shoreline points
+    output_filename = []  # filename of the images from which the shorelines where derived
+    output_geoaccuracy = []  # georeferencing accuracy of the images
+    output_median_no = []
+
+    # loop through the images
+    for i in range(len(filenames)):
+
+        print('\r%s:   %d%%' % (satname, int(((i + 1) / len(filenames)) * 100)))
+        print()
+
+        # get image filename
+        filename = filenames[i]
+
+        file_path = os.path.join(data_path, filename)
+
+        sar_image, georef = NOC_preprocess.preprocess_sar(file_path, satname)
+
+        # get image spatial reference system (epsg code) from metadata dict
+        image_epsg = metadata[satname]['epsg'][i]
+
+        buffer_shape = (sar_image.shape[0], sar_image.shape[1])
+
+        # calculate a buffer around the reference shoreline (if any has been digitised)
+        if settings['reference_shoreline'].any():
+            image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+                                                    pixel_size, settings)
+        else:
+            image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
+
+        # find the shoreline interactively
+        date = filename[:19]
+        skip_image, shorelines = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
+                                                     settings, date,  satname)
+
+        # if the user decides to skip the image, continue and do not save the mapped shoreline
+        if skip_image:
+            continue
+
+        # append to output variables
+        output_timestamp.append(metadata[satname]['dates'][i])
+        output_shoreline.append(shorelines)
+        output_filename.append(filenames[i])
+        output_geoaccuracy.append(metadata[satname]['acc_georef'][i])
+        output_median_no.append(metadata[satname]['median_no'][i])
+
+    # create dictionnary of output
+    output[satname] = {
+        'dates': output_timestamp,
+        'shorelines': output_shoreline,
+        'filename': output_filename,
+        'geoaccuracy': output_geoaccuracy,
+        'median_no': output_median_no
+    }
+    print('')
+
+    # close figure window if still open
+    if plt.get_fignums():
+        plt.close()
+
+    output = SDS_tools.merge_output(output)
+
+    # save outputput structure as output.pkl
+    filepath = os.path.join(base_filepath, sitename)
+    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
+        pickle.dump(output, f)
+
+    return output
+
+
 def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
                      settings, date, satname):
 
@@ -830,7 +623,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
             contours_sar = measure.find_contours(image_pol, level=t_sar,
                                                  fully_connected='high', mask=image_ref_buffer)
             # process the water contours into a shoreline
-            shorelines = process_sar_shorelines(contours_sar, georef, image_epsg, settings)
+            shorelines = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
 
             for shoreline in shorelines:
                 # convert shoreline to pixels
@@ -900,10 +693,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     for ax in fig.axes:
         ax.clear()
 
-#    if inputs['sigma'] != 0:
-#        filepath = os.path.join(inputs['filepath'], sitename)
-#        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
-#            pickle.dump(shorelines, f)
+    if inputs['sigma'] != 0:
+        filepath = os.path.join(inputs['filepath'], sitename)
+        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
+            pickle.dump(shorelines, f)
 
     return skip_image, shorelines
 
@@ -933,33 +726,4 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     shoreline = contours_array
 
     return shoreline
-
-def process_sar_shorelines(contours, georef, image_epsg, settings):
-
-    # convert pixel coordinates to world coordinates
-    contours_world = SDS_tools.convert_pix2world(contours, georef)
-    # convert world coordinates to desired spatial reference system
-    contours_epsg = SDS_tools.convert_epsg(contours_world, image_epsg, settings['output_epsg'])
-    # remove contours that have a perimeter < min_length_sl (provided in settings dict)
-    # this enables to remove the very small contours that do not correspond to the shoreline
-    contours_long = []
-    for l, wl in enumerate(contours_epsg):
-        coords = [(wl[k, 0], wl[k, 1]) for k in range(len(wl))]
-        a = LineString(coords)  # shapely LineString structure
-        if a.length >= settings['min_length_sl']:
-            contours_long.append(wl)
-
-    shorelines = []
-    for contour in contours_long:
-        # format points into np.array
-        x_points = np.array([])
-        y_points = np.array([])
-        for k in range(len(contours_long)):
-            x_points = np.append(x_points, contours_long[k][:, 0])
-            y_points = np.append(y_points, contours_long[k][:, 1])
-        contours_array = np.transpose(np.array([x_points, y_points]))
-
-        shorelines.append(contours_array)
-
-    return shorelines
 

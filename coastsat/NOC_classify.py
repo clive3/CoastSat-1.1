@@ -1,242 +1,8 @@
+import numpy
+
 from coastsat.SDS_classify import *
 from coastsat import NOC_shoreline
-
-
-
-def evaluate_classifier_4classes(classifier, metadata, settings, base_path):
-    """
-    Apply the image classifier to all the images and save the classified images.
-
-    KV WRL 2019
-
-    Arguments:
-    -----------
-    classifier: joblib object
-        classifier model to be used for image classification
-    metadata: dict
-        contains all the information about the satellite images that were downloaded
-    settings: dict with the following keys
-        'inputs': dict
-            input parameters (sitename, filepath, polygon, dates, sat_list)
-        'cloud_thresh': float
-            value between 0 and 1 indicating the maximum cloud fraction in
-            the cropped image that is accepted
-        'cloud_mask_issue': boolean
-            True if there is an issue with the cloud mask and sand pixels
-            are erroneously being masked on the images
-        'output_epsg': int
-            output spatial reference system as EPSG code
-        'buffer_size': int
-            size of the buffer (m) around the sandy pixels over which the pixels
-            are considered in the thresholding algorithm
-        'min_beach_area': int
-            minimum allowable object area (in metres^2) for the class 'sand',
-            the area is converted to number of connected pixels
-        'min_length_sl': int
-            minimum length (in metres) of shoreline contour to be valid
-
-    Returns:
-    -----------
-    Saves .jpg images with the output of the classification in the folder ./detection
-
-    """
-
-    # create folder called evaluation
-    fp = os.path.join(base_path, 'evaluation')
-    if not os.path.exists(fp):
-        os.makedirs(fp)
-
-    # initialize figure (not interactive)
-    plt.ioff()
-    fig, ax = plt.subplots(1, 2, figsize=[17, 10], sharex=True, sharey=True,
-                           constrained_layout=True)
-
-    # create colormap for labels
-    colours = np.zeros((4, 4))
-    colours[0, :] = np.array([1, 0, 0, 1])
-    colours[1, :] = np.array([0, 1, 0, 1])
-    colours[2, :] = np.array([1, 1, 0, 1])
-    colours[3, :] = np.array([1, 0, 1, 1])
-
-    # loop through satellites
-    for satname in metadata.keys():
-        filepath = SDS_tools.get_filepath(settings['inputs'], satname)
-        filenames = metadata[satname]['filenames']
-
-        # load classifiers and
-        if satname in ['L5', 'L7', 'L8']:
-            pixel_size = 15
-        elif satname == 'S2':
-            pixel_size = 10
-        # convert settings['min_beach_area'] and settings['buffer_size'] from metres to pixels
-
-        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
-
-        # loop through images
-        for i in range(len(filenames)):
-            # image filename
-            fn = SDS_tools.get_filenames(filenames[i], filepath, satname)
-            # read and preprocess image
-            image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-                SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
-
-            # calculate cloud cover
-            cloud_cover = np.divide(sum(sum(cloud_mask.astype(int))),
-                                    (cloud_mask.shape[0] * cloud_mask.shape[1]))
-            # skip image if cloud cover is above threshold
-            if cloud_cover > settings['cloud_thresh']:
-                continue
-
-            # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
-            image_classif, image_labels = NOC_shoreline.classify_image_NN(image_ms, cloud_mask,
-                                                                     min_beach_area_pixels, classifier)
-
-            # make a plot
-            image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
-            # create classified image
-            image_class = np.copy(image_RGB)
-
-            for k in range(0, image_labels.shape[2]):
-                image_class[image_labels[:, :, k], 0] = colours[k, 0]
-                image_class[image_labels[:, :, k], 1] = colours[k, 1]
-                image_class[image_labels[:, :, k], 2] = colours[k, 2]
-
-            # show images
-            ax[0].imshow(image_RGB)
-            #            ax[1].imshow(image_RGB)
-            ax[1].imshow(image_class, alpha=0.75)
-            ax[0].axis('off')
-            ax[1].axis('off')
-            filename = filenames[i][:filenames[i].find('.')][:-4]
-            ax[0].set_title(filename)
-            # save figure
-            fig.savefig(os.path.join(fp, settings['inputs']['sitename'] + filename[:19] + '.jpg'), dpi=150)
-            # clear axes
-            for cax in fig.axes:
-                cax.clear()
-
-    # close the figure at the end
-    plt.close()
-
-
-
-def evaluate_classifier_5classes(classifier, metadata, settings, base_path):
-    """
-    Apply the image classifier to all the images and save the classified images.
-
-    KV WRL 2019
-
-    Arguments:
-    -----------
-    classifier: joblib object
-        classifier model to be used for image classification
-    metadata: dict
-        contains all the information about the satellite images that were downloaded
-    settings: dict with the following keys
-        'inputs': dict
-            input parameters (sitename, filepath, polygon, dates, sat_list)
-        'cloud_thresh': float
-            value between 0 and 1 indicating the maximum cloud fraction in
-            the cropped image that is accepted
-        'cloud_mask_issue': boolean
-            True if there is an issue with the cloud mask and sand pixels
-            are erroneously being masked on the images
-        'output_epsg': int
-            output spatial reference system as EPSG code
-        'buffer_size': int
-            size of the buffer (m) around the sandy pixels over which the pixels
-            are considered in the thresholding algorithm
-        'min_beach_area': int
-            minimum allowable object area (in metres^2) for the class 'sand',
-            the area is converted to number of connected pixels
-        'min_length_sl': int
-            minimum length (in metres) of shoreline contour to be valid
-
-    Returns:
-    -----------
-    Saves .jpg images with the output of the classification in the folder ./detection
-
-    """
-
-    # create folder called evaluation
-    fp = os.path.join(base_path, 'evaluation')
-    if not os.path.exists(fp):
-        os.makedirs(fp)
-
-    # initialize figure (not interactive)
-    plt.ioff()
-    fig, ax = plt.subplots(1, 2, figsize=[17, 10], sharex=True, sharey=True,
-                           constrained_layout=True)
-
-    # create colormap for labels
-    colours = np.zeros((5, 4))
-    colours[0, :] = np.array([1, 0, 0, 1])
-    colours[1, :] = np.array([0, 1, 0, 1])
-    colours[2, :] = np.array([1, 1, 0, 1])
-    colours[3, :] = np.array([1, 0, 1, 1])
-    colours[4, :] = np.array([0, 91 / 255, 1, 1])
-
-    # loop through satellites
-    for satname in metadata.keys():
-        filepath = SDS_tools.get_filepath(settings['inputs'], satname)
-        filenames = metadata[satname]['filenames']
-
-        # load classifiers and
-        if satname in ['L5', 'L7', 'L8']:
-            pixel_size = 15
-        elif satname == 'S2':
-            pixel_size = 10
-        # convert settings['min_beach_area'] and settings['buffer_size'] from metres to pixels
-
-        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
-
-        # loop through images
-        for i in range(len(filenames)):
-            # image filename
-            fn = SDS_tools.get_filenames(filenames[i], filepath, satname)
-            # read and preprocess image
-            image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-                SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
-
-            # calculate cloud cover
-            cloud_cover = np.divide(sum(sum(cloud_mask.astype(int))),
-                                    (cloud_mask.shape[0] * cloud_mask.shape[1]))
-            # skip image if cloud cover is above threshold
-            if cloud_cover > settings['cloud_thresh']:
-                continue
-
-            # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
-            image_classif, image_labels = NOC_shoreline.classify_image_NN(image_ms, cloud_mask,
-                                                                     min_beach_area_pixels, classifier)
-
-            # make a plot
-            image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
-            # create classified image
-            image_class = np.copy(image_RGB)
-
-            for k in range(0, image_labels.shape[2]):
-                image_class[image_labels[:, :, k], 0] = colours[k, 0]
-                image_class[image_labels[:, :, k], 1] = colours[k, 1]
-                image_class[image_labels[:, :, k], 2] = colours[k, 2]
-
-            # show images
-            ax[0].imshow(image_RGB)
-            #            ax[1].imshow(image_RGB)
-            ax[1].imshow(image_class, alpha=0.75)
-            ax[0].axis('off')
-            ax[1].axis('off')
-            filename = filenames[i][:filenames[i].find('.')][:-4]
-            ax[0].set_title(filename)
-            # save figure
-            fig.savefig(os.path.join(fp, settings['inputs']['sitename'] + filename[:19] + '.jpg'), dpi=150)
-            # clear axes
-            for cax in fig.axes:
-                cax.clear()
-
-    # close the figure at the end
-    plt.close()
-
-
+from coastsat.SDS_shoreline import calculate_features
 
 
 def evaluate_classifier(classifier, metadata, settings, base_path):
@@ -1292,3 +1058,34 @@ def label_images_6classes(metadata, settings):
 
     # close figure when finished
     plt.close(fig)
+
+
+def classify_image_NN(image_ms, classes, cloud_mask, min_beach_area, classifier):
+
+    # calculate features
+    vec_features = calculate_features(image_ms, cloud_mask, np.ones(cloud_mask.shape).astype(bool))
+    vec_features[np.isnan(vec_features)] = 1e-9 # NaN values are create when std is too close to 0
+
+    # remove NaNs and cloudy pixels
+    vec_cloud = cloud_mask.reshape(cloud_mask.shape[0]*cloud_mask.shape[1])
+    vec_nan = np.any(np.isnan(vec_features), axis=1)
+    vec_mask = np.logical_or(vec_cloud, vec_nan)
+    vec_features = vec_features[~vec_mask, :]
+
+    # classify pixels
+    labels = classifier.predict(vec_features)
+
+    # recompose image
+    vec_classifier = np.nan*np.ones((cloud_mask.shape[0]*cloud_mask.shape[1]))
+    vec_classifier[~vec_mask] = labels
+    image_classifier = vec_classifier.reshape((cloud_mask.shape[0], cloud_mask.shape[1]))
+
+    images_layers = []
+    for key in classes.keys():
+
+        class_label = classes[key][0]
+        images_layers.append(image_classifier == class_label)
+
+    image_labels = np.stack(images_layers, axis=-1)
+
+    return image_classifier, image_labels
