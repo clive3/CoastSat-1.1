@@ -4,6 +4,8 @@ from coastsat.SDS_shoreline import *
 
 from coastsat import NOC_preprocess, NOC_tools
 
+from utils.print_utils import printError, printSuccess, printLine, printWarning
+
 
 def classify_image_NN_4classes(image_ms, cloud_mask, min_beach_area, classifier):
     """
@@ -453,15 +455,18 @@ def extract_shorelines_sar(metadata, settings):
 
         # find the shoreline interactively
         date = filename[:19]
-        skip_image, shoreline = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
+        skip_image, shorelines = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
                                                      settings, date,  satname)
+
+        print(f'@@@ {len(shorelines)}')
+
         # if the user decides to skip the image, continue and do not save the mapped shoreline
         if skip_image:
             continue
 
         # append to output variables
         output_timestamp.append(metadata[satname]['dates'][i])
-        output_shoreline.append(shoreline)
+        output_shoreline.append(shorelines)
         output_filename.append(filenames[i])
         output_geoaccuracy.append(metadata[satname]['acc_georef'][i])
         output_median_no.append(metadata[satname]['median_no'][i])
@@ -483,9 +488,9 @@ def extract_shorelines_sar(metadata, settings):
     output = SDS_tools.merge_output(output)
 
     # save outputput structure as output.pkl
-    filepath = os.path.join(base_filepath, sitename)
-    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
-        pickle.dump(output, f)
+#    filepath = os.path.join(base_filepath, sitename)
+#    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
+#        pickle.dump(output, f)
 
     return output
 
@@ -573,7 +578,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         patches.append(mpatches.Patch(color=class_colour, label=key))
 
     patches.append(mlines.Line2D([],[],color='k',linestyle='-', label='shoreline'))
-    ax2.legend(handles=patches, bbox_to_anchor=(1, 0.5), fontsize=10)
+#    ax2.legend(handles=patches, bbox_to_anchor=(1, 0.5), fontsize=10)
     ax2.set_title(date_string, fontweight='bold', fontsize=16)
 
     # plot image 3 (MNDWI)
@@ -723,7 +728,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     filepath = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
 
     # format date
-#    date_str = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d  %H:%M:%S')
+    date_str = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d')
 
     # compute classified image
     if polarisation == 'VV':
@@ -773,7 +778,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # plot image 1 (grey)
     ax2.imshow(image_pol, cmap='gray')
     ax2.axis('off')
-    ax2.set_title(polarisation, fontweight='bold', fontsize=16)
+    ax2.set_title(date_str, fontweight='bold', fontsize=16)
 
     # plot image 3 (blue/red)
     ax3.imshow(image_pol, cmap='bwr')
@@ -793,11 +798,11 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
-    shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
+    shorelines = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
 
     # convert shoreline to pixels
-    if len(shoreline) > 0:
-        sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
+    if len(shorelines) > 0:
+        sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shorelines,
                                                                     settings['output_epsg'],
                                                                     image_epsg)[:, [0, 1]], georef)
     else:
@@ -814,6 +819,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # adjust the threshold manually by letting the user change the threshold
     ax4.set_title(
         'Click on the plot below to change the location of the threhsold and adjust the shoreline detection. When finished, press <Enter>')
+
     while True:
         # let the user click on the threshold plot
         pt = ginput(n=1, show_clicks=True, timeout=-1)
@@ -824,20 +830,23 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
-            contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
+            contours_sar = measure.find_contours(image_pol, level=t_sar,
+                                                 fully_connected='high', mask=image_ref_buffer)
             # process the water contours into a shoreline
-            shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
-            # convert shoreline to pixels
-            if len(shoreline) > 0:
-                sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
-                                                                            settings['output_epsg'],
-                                                                            image_epsg)[:, [0, 1]], georef)
-            else:
-                sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
-            # update the plotted shorelines
-            sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-            sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-            sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            shorelines = process_sar_shorelines(contours_sar, georef, image_epsg, settings)
+
+            for shoreline in shorelines:
+                # convert shoreline to pixels
+                if len(shoreline) > 0:
+                    sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
+                                                                                settings['output_epsg'],
+                                                                                image_epsg)[:, [0, 1]], georef)
+                else:
+                    sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
+                # update the plotted shorelines
+                sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+                sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+                sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             fig.canvas.draw_idle()
         else:
             ax4.set_title('sigma0 pixel intensities and threshold')
@@ -894,12 +903,12 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     for ax in fig.axes:
         ax.clear()
 
-    if inputs['sigma'] != 0:
-        filepath = os.path.join(inputs['filepath'], sitename)
-        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
-            pickle.dump(shoreline, f)
+#    if inputs['sigma'] != 0:
+#        filepath = os.path.join(inputs['filepath'], sitename)
+#        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
+#            pickle.dump(shorelines, f)
 
-    return skip_image, shoreline
+    return skip_image, shorelines
 
 
 def process_sar_shoreline(contours, georef, image_epsg, settings):
@@ -927,3 +936,33 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     shoreline = contours_array
 
     return shoreline
+
+def process_sar_shorelines(contours, georef, image_epsg, settings):
+
+    # convert pixel coordinates to world coordinates
+    contours_world = SDS_tools.convert_pix2world(contours, georef)
+    # convert world coordinates to desired spatial reference system
+    contours_epsg = SDS_tools.convert_epsg(contours_world, image_epsg, settings['output_epsg'])
+    # remove contours that have a perimeter < min_length_sl (provided in settings dict)
+    # this enables to remove the very small contours that do not correspond to the shoreline
+    contours_long = []
+    for l, wl in enumerate(contours_epsg):
+        coords = [(wl[k, 0], wl[k, 1]) for k in range(len(wl))]
+        a = LineString(coords)  # shapely LineString structure
+        if a.length >= settings['min_length_sl']:
+            contours_long.append(wl)
+
+    shorelines = []
+    for contour in contours_long:
+        # format points into np.array
+        x_points = np.array([])
+        y_points = np.array([])
+        for k in range(len(contours_long)):
+            x_points = np.append(x_points, contours_long[k][:, 0])
+            y_points = np.append(y_points, contours_long[k][:, 1])
+        contours_array = np.transpose(np.array([x_points, y_points]))
+
+        shorelines.append(contours_array)
+
+    return shorelines
+
