@@ -618,23 +618,20 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
             # map contours with new threshold
-            contours_sar = measure.find_contours(image_pol, level=t_sar,
-                                                 fully_connected='high', mask=image_ref_buffer)
+            contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
             # process the water contours into a shoreline
             shorelines = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
 
-            for shoreline in shorelines:
-                # convert shoreline to pixels
-                if len(shoreline) > 0:
-                    sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
-                                                                                settings['output_epsg'],
-                                                                                image_epsg)[:, [0, 1]], georef)
-                else:
-                    sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
-                # update the plotted shorelines
-                sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-                sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-                sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            if len(shorelines) > 0:
+                sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shorelines,
+                                                                            settings['output_epsg'],
+                                                                            image_epsg)[:, [0, 1]], georef)
+            else:
+                sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
+            # update the plotted shorelines
+            sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             fig.canvas.draw_idle()
         else:
             ax4.set_title('sigma0 pixel intensities and threshold')
@@ -719,8 +716,6 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     for k in range(len(contours_long)):
         x_points = np.append(x_points, contours_long[k][:, 0])
         y_points = np.append(y_points, contours_long[k][:, 1])
-    contours_array = np.transpose(np.array([x_points, y_points]))
+    shorelines = np.transpose(np.array([x_points, y_points]))
 
-    shoreline = contours_array
-
-    return shoreline
+    return shorelines
