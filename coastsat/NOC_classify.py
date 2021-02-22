@@ -5,86 +5,6 @@ from coastsat import NOC_shoreline
 from coastsat.SDS_shoreline import calculate_features
 
 
-def evaluate_classifier(classifier, metadata, settings, base_path):
-
-
-    # create folder called evaluation
-    fp = os.path.join(base_path, 'evaluation')
-    if not os.path.exists(fp):
-        os.makedirs(fp)
-
-    # initialize figure (not interactive)
-    plt.ioff()
-    fig, ax = plt.subplots(1, 2, figsize=[17, 10], sharex=True, sharey=True,
-                           constrained_layout=True)
-
-    # loop through satellites
-    for satname in metadata.keys():
-        filepath = SDS_tools.get_filepath(settings['inputs'], satname)
-        filenames = metadata[satname]['filenames']
-
-        # load classifiers and
-        if satname in ['L5', 'L7', 'L8']:
-            pixel_size = 15
-        elif satname == 'S2':
-            pixel_size = 10
-        # convert settings['min_beach_area'] and settings['buffer_size'] from metres to pixels
-
-        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
-
-        # loop through images
-        for i in range(len(filenames)):
-            # image filename
-            fn = SDS_tools.get_filenames(filenames[i], filepath, satname)
-            # read and preprocess image
-            image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-                SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
-
-            # calculate cloud cover
-            cloud_cover = np.divide(sum(sum(cloud_mask.astype(int))),
-                                    (cloud_mask.shape[0] * cloud_mask.shape[1]))
-            # skip image if cloud cover is above threshold
-            if cloud_cover > settings['cloud_thresh']:
-                continue
-
-            # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
-            image_classif, image_labels = NOC_shoreline.classify_image_NN_6classes(image_ms, cloud_mask,
-                                                                     min_beach_area_pixels, classifier)
-
-            # make a plot
-            image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
-            # create classified image
-            image_class = np.copy(image_RGB)
-
-            # for each class add calssified colours to image_class
-            classes = settings['classes']
-            class_keys = classes.keys()
-
-            for key in class_keys:
-                class_label = classes[key][0]
-                class_colour = classes[key][1]
-                image_class[image_labels[:, :, class_label-1], 0] = class_colour[0]
-                image_class[image_labels[:, :, class_label-1], 1] = class_colour[1]
-                image_class[image_labels[:, :, class_label-1], 2] = class_colour[2]
-                
-            # show images
-            ax[0].imshow(image_RGB)
-            #            ax[1].imshow(image_RGB)
-            ax[1].imshow(image_class, alpha=0.75)
-            ax[0].axis('off')
-            ax[1].axis('off')
-            filename = filenames[i][:filenames[i].find('.')][:-4]
-            ax[0].set_title(filename)
-            # save figure
-            fig.savefig(os.path.join(fp, settings['inputs']['sitename'] + filename[:19] + '.jpg'), dpi=150)
-            # clear axes
-            for cax in fig.axes:
-                cax.clear()
-
-    # close the figure at the end
-    plt.close()
-
-
 def label_images_4classes(metadata, settings):
     """
     Load satellite images and interactively label different classes (hard-coded)
@@ -1084,8 +1004,93 @@ def classify_image_NN(image_ms, classes, cloud_mask, min_beach_area, classifier)
     for key in classes.keys():
 
         class_label = classes[key][0]
-        images_layers.append(image_classifier == class_label)
+        print(f'@@@ {key}: {class_label}')
+        layer = image_classifier == class_label
+#        layer = morphology.remove_small_objects(layer, min_size=min_beach_area, connectivity=2)
+
+        images_layers.append(layer)
 
     image_labels = np.stack(images_layers, axis=-1)
 
+
+    print(f'@@@ {image_labels.shape}')
+
     return image_classifier, image_labels
+
+
+def evaluate_classifier(classifier, metadata, settings, base_path):
+    # create folder called evaluation
+    fp = os.path.join(base_path, 'evaluation')
+    if not os.path.exists(fp):
+        os.makedirs(fp)
+
+    # initialize figure (not interactive)
+    plt.ioff()
+    fig, ax = plt.subplots(1, 2, figsize=[17, 10], sharex=True, sharey=True,
+                           constrained_layout=True)
+
+    # loop through satellites
+    for satname in metadata.keys():
+        filepath = SDS_tools.get_filepath(settings['inputs'], satname)
+        filenames = metadata[satname]['filenames']
+
+        # load classifiers and
+        if satname in ['L5', 'L7', 'L8']:
+            pixel_size = 15
+        elif satname == 'S2':
+            pixel_size = 10
+        # convert settings['min_beach_area'] and settings['buffer_size'] from metres to pixels
+
+        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
+
+        # loop through images
+        for i in range(len(filenames)):
+            # image filename
+            fn = SDS_tools.get_filenames(filenames[i], filepath, satname)
+            # read and preprocess image
+            image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
+                SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
+
+            # calculate cloud cover
+            cloud_cover = np.divide(sum(sum(cloud_mask.astype(int))),
+                                    (cloud_mask.shape[0] * cloud_mask.shape[1]))
+            # skip image if cloud cover is above threshold
+            if cloud_cover > settings['cloud_thresh']:
+                continue
+
+            # classify image in 4 classes (sand, whitewater, water, other) with NN classifier
+            image_classif, image_labels = NOC_shoreline.classify_image_NN_6classes(image_ms, cloud_mask,
+                                                                                   min_beach_area_pixels, classifier)
+
+            # make a plot
+            image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
+            # create classified image
+            image_class = np.copy(image_RGB)
+
+            # for each class add calssified colours to image_class
+            classes = settings['classes']
+            class_keys = classes.keys()
+
+            for key in class_keys:
+                class_label = classes[key][0]
+                class_colour = classes[key][1]
+                image_class[image_labels[:, :, class_label - 1], 0] = class_colour[0]
+                image_class[image_labels[:, :, class_label - 1], 1] = class_colour[1]
+                image_class[image_labels[:, :, class_label - 1], 2] = class_colour[2]
+
+            # show images
+            ax[0].imshow(image_RGB)
+            #            ax[1].imshow(image_RGB)
+            ax[1].imshow(image_class, alpha=0.75)
+            ax[0].axis('off')
+            ax[1].axis('off')
+            filename = filenames[i][:filenames[i].find('.')][:-4]
+            ax[0].set_title(filename)
+            # save figure
+            fig.savefig(os.path.join(fp, settings['inputs']['sitename'] + filename[:19] + '.jpg'), dpi=150)
+            # clear axes
+            for cax in fig.axes:
+                cax.clear()
+
+    # close the figure at the end
+    plt.close()
