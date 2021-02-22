@@ -526,7 +526,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
         image_pol = np.copy(sar_image[:,:,1])
         colour = [1, 1, 0, 1]
 
-    if inputs['sigma'] != 0:
+    if not inputs['reference_shoreline']:
         image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
 
     # and the vectors needed for the histogram
@@ -708,7 +708,7 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     for l, wl in enumerate(contours_epsg):
         coords = [(wl[k, 0], wl[k, 1]) for k in range(len(wl))]
         a = LineString(coords)  # shapely LineString structure
-        if a.length >= settings['min_length_sl']:
+        if a.length >= settings['min_length_shoreline']:
             contours_long.append(wl)
     # format points into np.array
     x_points = np.array([])
