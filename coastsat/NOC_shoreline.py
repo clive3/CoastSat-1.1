@@ -1,10 +1,8 @@
 from scipy.ndimage import gaussian_filter
 
-from coastsat.NOC_classify import classify_image_NN
 from coastsat.SDS_shoreline import *
 
-from coastsat import NOC_preprocess, NOC_tools
-
+from coastsat import NOC_preprocess, NOC_tools, NOC_classify
 
 
 def extract_shorelines_optical(metadata, settings):
@@ -92,7 +90,7 @@ def extract_shorelines_optical(metadata, settings):
                                                     pixel_size, settings)
 
             # classify image with NN classifier
-            image_classifier, image_labels = classify_image_NN(image_ms, classes, cloud_mask,
+            image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
                                                                min_beach_area_pixels, classifier)
 
             # find the shoreline interactively
@@ -137,7 +135,6 @@ def extract_shorelines_optical(metadata, settings):
         pickle.dump(output, f)
 
     return output
-
 
 
 def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
@@ -408,6 +405,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         ax.clear()
 
     return skip_image, shoreline
+
 
 
 def extract_shorelines_sar(metadata, settings):
