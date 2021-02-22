@@ -688,7 +688,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     for ax in fig.axes:
         ax.clear()
 
-    if inputs['sigma'] != 0:
+    if not inputs['reference_shoreline']:
         filepath = os.path.join(inputs['filepath'], sitename)
         with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(shorelines, f)
