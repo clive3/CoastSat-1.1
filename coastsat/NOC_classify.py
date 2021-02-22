@@ -1004,16 +1004,12 @@ def classify_image_NN(image_ms, classes, cloud_mask, min_beach_area, classifier)
     for key in classes.keys():
 
         class_label = classes[key][0]
-        print(f'@@@ {key}: {class_label}')
         layer = image_classifier == class_label
-#        layer = morphology.remove_small_objects(layer, min_size=min_beach_area, connectivity=2)
+        layer = morphology.remove_small_objects(layer, min_size=min_beach_area, connectivity=2)
 
         images_layers.append(layer)
 
     image_labels = np.stack(images_layers, axis=-1)
-
-
-    print(f'@@@ {image_labels.shape}')
 
     return image_classifier, image_labels
 
