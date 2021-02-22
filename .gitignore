@@ -129,6 +129,5 @@ dmypy.json
 
 #data directory
 data/
-classification/
 *.txt
 *.tif
