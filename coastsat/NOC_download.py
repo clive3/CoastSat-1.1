@@ -81,22 +81,7 @@ def retrieve_median_sar(inputs):
     return metadata
 
 
-def get_sar_url(image, scale, region, filepath):
-
-    path = image.getDownloadURL({
-        'name': 'data',
-        'scale': scale,
-        'region': region,
-        'filePerBand': False,
-        'bands': ['VV','VH']
-    })
-
-    local_zip, headers = urlretrieve(path)
-    with zipfile.ZipFile(local_zip) as local_zipfile:
-        return local_zipfile.extractall(path=str(filepath))
-
-
-def retrieve_images(inputs):
+def retrieve_images_optical(inputs):
     """
     Downloads all images from Landsat 5, Landsat 7, Landsat 8 and Sentinel-2
     covering the area of interest and acquired between the specified dates.
@@ -267,49 +252,388 @@ def retrieve_images(inputs):
 
     return metadata
 
+def retrieve_median_optical(settings):
+    """
+    Downloads all images from Landsat 5, Landsat 7, Landsat 8 and Sentinel-2
+    covering the area of interest and acquired between the specified dates.
+    The downloaded images are in .TIF format and organised in subfolders, divided
+    by satellite mission. The bands are also subdivided by pixel resolution.
 
-def check_training_images_available(inputs):
+    KV WRL 2018
 
-    # check if dates are in correct order
-    dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
-    if dates[1] <= dates[0]:
-        raise Exception('Verify that your dates are in the correct order')
+    Arguments:
+    -----------
+    inputs: dict with the following keys
+        'sitename': str
+            name of the site
+        'polygon': list
+            polygon containing the lon/lat coordinates to be extracted,
+            longitudes in the first column and latitudes in the second column,
+            there are 5 pairs of lat/lon with the fifth point equal to the first point:
+            ```
+            polygon = [[[151.3, -33.7],[151.4, -33.7],[151.4, -33.8],[151.3, -33.8],
+            [151.3, -33.7]]]
+            ```
+        'dates': list of str
+            list that contains 2 strings with the initial and final dates in
+            format 'yyyy-mm-dd':
+            ```
+            dates = ['1987-01-01', '2018-01-01']
+            ```
+        'sat_list': list of str
+            list that contains the names of the satellite missions to include:
+            ```
+            sat_list = ['L5', 'L7', 'L8', 'S2']
+            ```
+        'filepath_data': str
+            filepath to the directory where the images are downloaded
 
-    # check if EE was initialised or not
-    try:
-        ee.ImageCollection('LANDSAT/LT05/C01/T1_TOA')
-    except:
-        ee.Initialize()
+    Returns:
+    -----------
+    metadata: dict
+        contains the information about the satellite images that were downloaded:
+        date, filename, georeferencing accuracy and image coordinate reference system
 
-    # check how many images are available in Tier 1 and Sentinel Level-1C
-    col_names_T1 = {'L5':'LANDSAT/LT05/C01/T1_TOA',
-                 'L7':'LANDSAT/LE07/C01/T1_TOA',
-                 'L8':'LANDSAT/LC08/C01/T1_TOA',
-                 'S2':'COPERNICUS/S2'}
+    """
 
-    im_dict_T1 = {}
-    for satname in inputs['sat_list']:
+    inputs = settings['inputs']
 
-        # get list of images in EE collection
-        while True:
-            try:
+    # initialise connection with GEE server
+    ee.Initialize()
 
-                ee_col = ee.ImageCollection(col_names_T1[satname])\
-                            .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
-                            .filterDate(inputs['dates'][0],inputs['dates'][1]) \
-                            .sort('CLOUDY_PIXEL_PERCENTAGE')
+    # create a new directory for this site with the name of the site
+    im_folder = os.path.join(inputs['filepath'], inputs['sitename'])
+    if not os.path.exists(im_folder): os.makedirs(im_folder)
 
-                im_list = ee_col.getInfo().get('features')
-                break
-            except:
-                continue
+    print('\ndownloading images ...')
+    suffix = '.tif'
+    satname = inputs['sat_list']
 
-        im_dict_T1[satname] = im_list
+    # Landsat 5 download
+    if satname == ['L5']:
+        # create subfolder structure to store the different bands
+        filepaths = create_folder_structure(im_folder, 'L5')
+        # initialise variables and loop through images
+        filenames = [];
+        all_names = [];
+        # for year in sat_list:
+        median_img, sum_img = get_median_image_optical('LANDSAT/LT05/C01/T1_TOA',
+                                                       inputs['dates'],
+                                                       ee.Geometry.Polygon(inputs['polygon']),
+                                                       inputs['sat_list'],
+                                                       settings)
 
-    return im_dict_T1
+        print('Median Processed')
+        # extract year
+        first_date = inputs["dates"][0]
+        year = first_date[:-6]
+
+        im_fn = dict([])
+        im_fn[''] = 'L5' + '_' + inputs['sitename'] + '_median_' + year + suffix
+        # if two images taken at the same date add 'dup' to the name (duplicate)
+        if any(im_fn[''] in _ for _ in all_names):
+            im_fn[''] = 'L5' + '_' + inputs['sitename'] + '_dup' + suffix
+        all_names.append(im_fn[''])
+        filenames.append(im_fn[''])
+
+        ##Extract band metadata and define those to download
+        metadata = median_img.getInfo()
+#        im_bands = metadata['bands']
+
+        bands = dict([])
+        bands[''] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
+
+        if settings['coregistration'] == True:
+
+            displacement = Landsat_Coregistration(inputs)
+            print('displacement calculated')
+
+            # Apply XY displacement values from overlapping images to the median composite
+            registered = median_img.displace(displacement, mode="bicubic")
+            print('Registered')
+
+            # download .tif from EE
+            get_url_optical('data', registered, 30, inputs['polygon'], filepaths[1], bands[''])
+            print('Downloaded')
+
+        else:
+            # download .tif from EE
+            get_url_optical('data', median_img, ee.Number(30), inputs['polygon'], filepaths[1], bands[''])
+            print('Downloaded')
+
+            # rename the file as the image is downloaded as 'data.tif'
+        # locate download
+        local_data = filepaths[1] + '\data.tif'
+
+        try:
+            os.rename(local_data, os.path.join(filepaths[1], im_fn['']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[1], im_fn['']))
+            os.rename(local_data, os.path.join(filepaths[1], im_fn['']))
+        # metadata for .txt file
+        filename_txt = im_fn[''].replace('.tif', '')
+        metadict = {'filename': im_fn[''],
+                    'epsg': metadata['bands'][0]['crs'][5:],
+                    'start_date': inputs['dates'][0],
+                    'end_date': inputs['dates'][1],
+                    'median_no': sum_img}
+
+    # Landsat 7 download
+    elif satname == ['L7']:
+        # create subfolder structure to store the different bands
+        filepaths = create_folder_structure(im_folder, 'L7')
+        # initialise variables and loop through images
+        filenames = [];
+        all_names = [];
+        # for year in sat_list:
+        median_img, sum_img = get_median_image_optical('LANDSAT/LE07/C01/T1_TOA',
+                                                       inputs['dates'],
+                                                       ee.Geometry.Polygon(inputs['polygon']),
+                                                       inputs['sat_list'],
+                                                       settings)
+
+        # extract year
+        first_date = inputs["dates"][0]
+        year = first_date[:-6]
+
+        im_fn = dict([])
+        im_fn[''] = 'L7' + '_' + inputs['sitename'] + '_median_' + year + suffix
+        # if two images taken at the same date add 'dup' to the name (duplicate)
+        if any(im_fn[''] in _ for _ in all_names):
+            im_fn[''] = 'L7' + '_' + inputs['sitename'] + '_dup' + suffix
+        all_names.append(im_fn[''])
+        filenames.append(im_fn[''])
+
+        ##Extract band metadata and define those to download
+        metadata = median_img.getInfo()
+        im_bands = metadata['bands']
+
+        bands = dict([])
+        bands['pan'] = ['pan']  # panchromatic band
+        bands['ms'] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
+
+        if settings['coregistration'] == True:
+            displacement = Landsat_Coregistration(inputs)
+
+            # Apply XY displacement values from overlapping images to the median composite
+            registered = median_img.displace(displacement, mode="bicubic")
+            print('Co-registered')
+
+            # download .tif from EE
+            get_url_optical('data', registered, 30, inputs['polygon'], filepaths[2], bands['ms'])
+            get_url_optical('data', registered, 15, inputs['polygon'], filepaths[1], bands['pan'])
+            print('Downloaded')
+        else:
+            # download .tif from EE
+            get_url_optical('data', median_img, ee.Number(30), inputs['polygon'], filepaths[2], bands['ms'])
+            get_url_optical('data', median_img, ee.Number(15), inputs['polygon'], filepaths[1], bands['pan'])
+            print('Downloaded')
+
+            # rename the file as the image is downloaded as 'data.tif'
+        # locate download
+        local_data = filepaths[2] + '\data.tif'
+        local_data_pan = filepaths[1] + '\data.tif'
+
+        try:
+            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[2], im_fn['']))
+            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
+
+        try:
+            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[1], im_fn['']))
+            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
+
+        # metadata for .txt file
+        filename_txt = im_fn[''].replace('.tif', '')
+        metadict = {'filename': im_fn[''],
+                    'epsg': metadata['bands'][0]['crs'][5:],
+                    'start_date': inputs['dates'][0],
+                    'end_date': inputs['dates'][1],
+                    'median_no': sum_img}
+
+        # Landsat 8 download
+    elif satname == ['L8']:
+        # create subfolder structure to store the different bands
+        filepaths = create_folder_structure(im_folder, 'L8')
+        # initialise variables and loop through images
+        filenames = [];
+        all_names = [];
+        # for year in sat_list:
+        median_img, sum_img = get_median_image_optical('LANDSAT/LC08/C01/T1_TOA',
+                                                       inputs['dates'],
+                                                       ee.Geometry.Polygon(inputs['polygon']), inputs['sat_list'],
+                                                       settings)
+
+        print('Median Processed')
+        # extract year
+        first_date = inputs["dates"][0]
+        year = first_date[:-6]
+
+        im_fn = dict([])
+        im_fn[''] = 'L8' + '_' + inputs['sitename'] + '_median_' + year + suffix
+        # if two images taken at the same date add 'dup' to the name (duplicate)
+        if any(im_fn[''] in _ for _ in all_names):
+            im_fn[''] = 'L8' + '_' + inputs['sitename'] + '_dup' + suffix
+        all_names.append(im_fn[''])
+        filenames.append(im_fn[''])
+
+        ##Extract band metadata and define those to download
+        metadata = median_img.getInfo()
+        im_bands = metadata['bands']
+
+        if settings['add_L7_to_L8'] == False:
+
+            bands = dict([])
+            bands['pan'] = ['B8']  # panchromatic band
+            bands['ms'] = ['B2', 'B3', 'B4', 'B5', 'B6', 'BQA']
+        else:
+            bands = dict([])
+            bands['pan'] = ['pan']  # panchromatic band
+            bands['ms'] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
+
+        if settings['coregistration'] == True:
+
+            displacement = Landsat_Coregistration(inputs)
+
+            # Apply XY displacement values from overlapping images to the median composite
+            registered = median_img.displace(displacement, mode="bicubic")
+            print('Co-registered')
+
+            # download .tif from EE
+            get_url_optical('data', registered, 30, inputs['polygon'], filepaths[2], bands['ms'])
+            get_url_optical('data', registered, 15, inputs['polygon'], filepaths[1], bands['pan'])
+            print('Downloaded')
+
+        else:
+            # download .tif from EE
+            get_url_optical('data', median_img, ee.Number(30), inputs['polygon'], filepaths[2], bands['ms'])
+            get_url_optical('data', median_img, ee.Number(15), inputs['polygon'], filepaths[1], bands['pan'])
+            print('Downloaded')
+
+            # rename the file as the image is downloaded as 'data.tif'
+        # locate download
+        local_data = filepaths[2] + '\data.tif'
+        local_data_pan = filepaths[1] + '\data.tif'
+
+        try:
+            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[2], im_fn['']))
+            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
+
+        try:
+            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[1], im_fn['']))
+            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
+
+        # metadata for .txt file
+        filename_txt = im_fn[''].replace('.tif', '')
+        metadict = {'filename': im_fn[''],
+                    'epsg': metadata['bands'][0]['crs'][5:],
+                    'start_date': inputs['dates'][0],
+                    'end_date': inputs['dates'][1],
+                    'median_no': sum_img}
+
+        # Sentinel 2 download
+    elif satname == ['S2']:
+
+        # create subfolder structure to store the different bands
+        filepaths = create_folder_structure(im_folder, 'S2')
+
+        # initialise variables and loop through images
+        filenames = []
+        all_names = []
+        # for year in sat_list:
+        median_img, sum_img = get_median_image_optical('COPERNICUS/S2',
+                                                       inputs['dates'],
+                                                       ee.Geometry.Polygon(inputs['polygon']), inputs['sat_list'],
+                                                       settings)
+        print('\ncalculating median image')
+
+        im_date = settings['inputs']['dates'][0] + '-00-00-00'
+        # extract year
+#        first_date = inputs["dates"][0]
+#        year = first_date[:-6]
+
+        ##Extract band metadata and define those to download
+        metadata = median_img.getInfo()
+        # im_bands = metadata['bands']
+
+        bands = {}
+        bands['10m'] = ['B2', 'B3', 'B4', 'B8']  # multispectral bands
+        bands['20m'] = ['B12']  # SWIR band
+        bands['60m'] = ['QA60']  # QA band
+
+        im_fn = {}
+        for key in bands.keys():
+            im_fn[key] = im_date + '_' + satname[0] + '_' + inputs['sitename'] + '_median_' + key + suffix
+        # if two images taken at the same date add 'dup' to the name (duplicate)
+        if any(im_fn['10m'] in _ for _ in all_names):
+            for key in bands.keys():
+                im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_dup' + suffix
+            # also check for triplicates (only on S2 imagery) and add 'tri' to the name
+            if im_fn['10m'] in all_names:
+                for key in bands.keys():
+                    im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_tri' + suffix
+
+        # download .tif from EE
+        get_url_optical('data', median_img, ee.Number(10), inputs['polygon'], filepaths[1], bands['10m'])
+        get_url_optical('data', median_img, ee.Number(20), inputs['polygon'], filepaths[2], bands['20m'])
+        get_url_optical('data', median_img, ee.Number(60), inputs['polygon'], filepaths[3], bands['20m'])
+        print('Downloaded')
+
+        # rename the file as the image is downloaded as 'data.tif'
+        # locate download
+        local_data_10m = filepaths[1] + '\data.tif'
+        local_data_20m = filepaths[2] + '\data.tif'
+        local_data_60m = filepaths[3] + '\data.tif'
+
+        try:
+            os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[1], im_fn['10m']))
+            os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
+
+        try:
+            os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[2], im_fn['20m']))
+            os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
+
+        try:
+            os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
+        except:  # overwrite if already exists
+            os.remove(os.path.join(filepaths[3], im_fn['60m']))
+            os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
+
+        # metadata for .txt file
+        filename_txt = im_fn['10m'].replace('_10m', '').replace('tif', 'txt')
+        metadict = {'filename': im_fn['10m'],
+                    'acc_georef': 1,
+                    'epsg': metadata['bands'][0]['crs'][5:],
+                    'median_no': sum_img}
 
 
-def obtain_median_image(collection, time_range, area, satname, settings):
+        # write metadata
+    with open(os.path.join(filepaths[0], filename_txt), 'w') as f:
+        for key in metadict.keys():
+            f.write('%s\t%s\n' % (key, metadict[key]))
+    print('')
+
+    # once all images have been downloaded, load metadata from .txt files
+    metadata = get_metadata(inputs)
+
+    # save metadata dict
+    with open(os.path.join(im_folder, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
+        pickle.dump(metadata, f)
+
+    return metadata
+
+def get_median_image_optical(collection, time_range, area, satname, settings):
     """ Selection of median from a collection of images in the Earth Engine library
     See also: https://developers.google.com/earth-engine/reducers_image_collection
 
@@ -856,389 +1180,9 @@ def obtain_median_image(collection, time_range, area, satname, settings):
         # image_area = collection_time.filterBounds(area)
         # image_2 = image_area.filterMetadata('CLOUDY_PIXEL_PERCENTAGE','less_than', 40)
         # image_median = image_2.median()
+
         return image_median, sum_img
 
-
-def retrieve_median_optical(settings):
-    """
-    Downloads all images from Landsat 5, Landsat 7, Landsat 8 and Sentinel-2
-    covering the area of interest and acquired between the specified dates.
-    The downloaded images are in .TIF format and organised in subfolders, divided
-    by satellite mission. The bands are also subdivided by pixel resolution.
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    inputs: dict with the following keys
-        'sitename': str
-            name of the site
-        'polygon': list
-            polygon containing the lon/lat coordinates to be extracted,
-            longitudes in the first column and latitudes in the second column,
-            there are 5 pairs of lat/lon with the fifth point equal to the first point:
-            ```
-            polygon = [[[151.3, -33.7],[151.4, -33.7],[151.4, -33.8],[151.3, -33.8],
-            [151.3, -33.7]]]
-            ```
-        'dates': list of str
-            list that contains 2 strings with the initial and final dates in
-            format 'yyyy-mm-dd':
-            ```
-            dates = ['1987-01-01', '2018-01-01']
-            ```
-        'sat_list': list of str
-            list that contains the names of the satellite missions to include:
-            ```
-            sat_list = ['L5', 'L7', 'L8', 'S2']
-            ```
-        'filepath_data': str
-            filepath to the directory where the images are downloaded
-
-    Returns:
-    -----------
-    metadata: dict
-        contains the information about the satellite images that were downloaded:
-        date, filename, georeferencing accuracy and image coordinate reference system
-
-    """
-
-    inputs = settings['inputs']
-
-    # initialise connection with GEE server
-    ee.Initialize()
-
-    # create a new directory for this site with the name of the site
-    im_folder = os.path.join(inputs['filepath'], inputs['sitename'])
-    if not os.path.exists(im_folder): os.makedirs(im_folder)
-
-    print('\ndownloading images ...')
-    suffix = '.tif'
-    satname = inputs['sat_list']
-
-    # Landsat 5 download
-    if satname == ['L5']:
-        # create subfolder structure to store the different bands
-        filepaths = create_folder_structure(im_folder, 'L5')
-        # initialise variables and loop through images
-        filenames = [];
-        all_names = [];
-        # for year in sat_list:
-        median_img, sum_img = obtain_median_image('LANDSAT/LT05/C01/T1_TOA',
-                                                  inputs['dates'],
-                                                  ee.Geometry.Polygon(inputs['polygon']),
-                                                  inputs['sat_list'],
-                                                  settings)
-
-        print('Median Processed')
-        # extract year
-        first_date = inputs["dates"][0]
-        year = first_date[:-6]
-
-        im_fn = dict([])
-        im_fn[''] = 'L5' + '_' + inputs['sitename'] + '_median_' + year + suffix
-        # if two images taken at the same date add 'dup' to the name (duplicate)
-        if any(im_fn[''] in _ for _ in all_names):
-            im_fn[''] = 'L5' + '_' + inputs['sitename'] + '_dup' + suffix
-        all_names.append(im_fn[''])
-        filenames.append(im_fn[''])
-
-        ##Extract band metadata and define those to download
-        metadata = median_img.getInfo()
-#        im_bands = metadata['bands']
-
-        bands = dict([])
-        bands[''] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
-
-        if settings['coregistration'] == True:
-
-            displacement = Landsat_Coregistration(inputs)
-            print('displacement calculated')
-
-            # Apply XY displacement values from overlapping images to the median composite
-            registered = median_img.displace(displacement, mode="bicubic")
-            print('Registered')
-
-            # download .tif from EE
-            get_url('data', registered, 30, inputs['polygon'], filepaths[1], bands[''])
-            print('Downloaded')
-
-        else:
-            # download .tif from EE
-            get_url('data', median_img, ee.Number(30), inputs['polygon'], filepaths[1], bands[''])
-            print('Downloaded')
-
-            # rename the file as the image is downloaded as 'data.tif'
-        # locate download
-        local_data = filepaths[1] + '\data.tif'
-
-        try:
-            os.rename(local_data, os.path.join(filepaths[1], im_fn['']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[1], im_fn['']))
-            os.rename(local_data, os.path.join(filepaths[1], im_fn['']))
-        # metadata for .txt file
-        filename_txt = im_fn[''].replace('.tif', '')
-        metadict = {'filename': im_fn[''],
-                    'epsg': metadata['bands'][0]['crs'][5:],
-                    'start_date': inputs['dates'][0],
-                    'end_date': inputs['dates'][1],
-                    'median_no': sum_img}
-
-    # Landsat 7 download
-    elif satname == ['L7']:
-        # create subfolder structure to store the different bands
-        filepaths = create_folder_structure(im_folder, 'L7')
-        # initialise variables and loop through images
-        filenames = [];
-        all_names = [];
-        # for year in sat_list:
-        median_img, sum_img = obtain_median_image('LANDSAT/LE07/C01/T1_TOA',
-                                                  inputs['dates'],
-                                                  ee.Geometry.Polygon(inputs['polygon']),
-                                                  inputs['sat_list'],
-                                                  settings)
-
-        # extract year
-        first_date = inputs["dates"][0]
-        year = first_date[:-6]
-
-        im_fn = dict([])
-        im_fn[''] = 'L7' + '_' + inputs['sitename'] + '_median_' + year + suffix
-        # if two images taken at the same date add 'dup' to the name (duplicate)
-        if any(im_fn[''] in _ for _ in all_names):
-            im_fn[''] = 'L7' + '_' + inputs['sitename'] + '_dup' + suffix
-        all_names.append(im_fn[''])
-        filenames.append(im_fn[''])
-
-        ##Extract band metadata and define those to download
-        metadata = median_img.getInfo()
-        im_bands = metadata['bands']
-
-        bands = dict([])
-        bands['pan'] = ['pan']  # panchromatic band
-        bands['ms'] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
-
-        if settings['coregistration'] == True:
-            displacement = Landsat_Coregistration(inputs)
-
-            # Apply XY displacement values from overlapping images to the median composite
-            registered = median_img.displace(displacement, mode="bicubic")
-            print('Co-registered')
-
-            # download .tif from EE
-            get_url('data', registered, 30, inputs['polygon'], filepaths[2], bands['ms'])
-            get_url('data', registered, 15, inputs['polygon'], filepaths[1], bands['pan'])
-            print('Downloaded')
-        else:
-            # download .tif from EE
-            get_url('data', median_img, ee.Number(30), inputs['polygon'], filepaths[2], bands['ms'])
-            get_url('data', median_img, ee.Number(15), inputs['polygon'], filepaths[1], bands['pan'])
-            print('Downloaded')
-
-            # rename the file as the image is downloaded as 'data.tif'
-        # locate download
-        local_data = filepaths[2] + '\data.tif'
-        local_data_pan = filepaths[1] + '\data.tif'
-
-        try:
-            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[2], im_fn['']))
-            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
-
-        try:
-            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[1], im_fn['']))
-            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
-
-        # metadata for .txt file
-        filename_txt = im_fn[''].replace('.tif', '')
-        metadict = {'filename': im_fn[''],
-                    'epsg': metadata['bands'][0]['crs'][5:],
-                    'start_date': inputs['dates'][0],
-                    'end_date': inputs['dates'][1],
-                    'median_no': sum_img}
-
-        # Landsat 8 download
-    elif satname == ['L8']:
-        # create subfolder structure to store the different bands
-        filepaths = create_folder_structure(im_folder, 'L8')
-        # initialise variables and loop through images
-        filenames = [];
-        all_names = [];
-        # for year in sat_list:
-        median_img, sum_img = obtain_median_image('LANDSAT/LC08/C01/T1_TOA',
-                                                  inputs['dates'],
-                                                  ee.Geometry.Polygon(inputs['polygon']), inputs['sat_list'],
-                                                  settings)
-
-        print('Median Processed')
-        # extract year
-        first_date = inputs["dates"][0]
-        year = first_date[:-6]
-
-        im_fn = dict([])
-        im_fn[''] = 'L8' + '_' + inputs['sitename'] + '_median_' + year + suffix
-        # if two images taken at the same date add 'dup' to the name (duplicate)
-        if any(im_fn[''] in _ for _ in all_names):
-            im_fn[''] = 'L8' + '_' + inputs['sitename'] + '_dup' + suffix
-        all_names.append(im_fn[''])
-        filenames.append(im_fn[''])
-
-        ##Extract band metadata and define those to download
-        metadata = median_img.getInfo()
-        im_bands = metadata['bands']
-
-        if settings['add_L7_to_L8'] == False:
-
-            bands = dict([])
-            bands['pan'] = ['B8']  # panchromatic band
-            bands['ms'] = ['B2', 'B3', 'B4', 'B5', 'B6', 'BQA']
-        else:
-            bands = dict([])
-            bands['pan'] = ['pan']  # panchromatic band
-            bands['ms'] = ['blue', 'green', 'red', 'nir', 'swir1', 'BQA']
-
-        if settings['coregistration'] == True:
-
-            displacement = Landsat_Coregistration(inputs)
-
-            # Apply XY displacement values from overlapping images to the median composite
-            registered = median_img.displace(displacement, mode="bicubic")
-            print('Co-registered')
-
-            # download .tif from EE
-            get_url('data', registered, 30, inputs['polygon'], filepaths[2], bands['ms'])
-            get_url('data', registered, 15, inputs['polygon'], filepaths[1], bands['pan'])
-            print('Downloaded')
-
-        else:
-            # download .tif from EE
-            get_url('data', median_img, ee.Number(30), inputs['polygon'], filepaths[2], bands['ms'])
-            get_url('data', median_img, ee.Number(15), inputs['polygon'], filepaths[1], bands['pan'])
-            print('Downloaded')
-
-            # rename the file as the image is downloaded as 'data.tif'
-        # locate download
-        local_data = filepaths[2] + '\data.tif'
-        local_data_pan = filepaths[1] + '\data.tif'
-
-        try:
-            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[2], im_fn['']))
-            os.rename(local_data, os.path.join(filepaths[2], im_fn['']))
-
-        try:
-            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[1], im_fn['']))
-            os.rename(local_data_pan, os.path.join(filepaths[1], im_fn['']))
-
-        # metadata for .txt file
-        filename_txt = im_fn[''].replace('.tif', '')
-        metadict = {'filename': im_fn[''],
-                    'epsg': metadata['bands'][0]['crs'][5:],
-                    'start_date': inputs['dates'][0],
-                    'end_date': inputs['dates'][1],
-                    'median_no': sum_img}
-
-        # Sentinel 2 download
-    elif satname == ['S2']:
-
-        # create subfolder structure to store the different bands
-        filepaths = create_folder_structure(im_folder, 'S2')
-
-        # initialise variables and loop through images
-        filenames = []
-        all_names = []
-        # for year in sat_list:
-        median_img, sum_img = obtain_median_image('COPERNICUS/S2',
-                                                  inputs['dates'],
-                                                  ee.Geometry.Polygon(inputs['polygon']), inputs['sat_list'],
-                                                  settings)
-        print('\ncalculating median image')
-
-        im_date = settings['inputs']['dates'][0] + '-00-00-00'
-        # extract year
-#        first_date = inputs["dates"][0]
-#        year = first_date[:-6]
-
-        ##Extract band metadata and define those to download
-        metadata = median_img.getInfo()
-        # im_bands = metadata['bands']
-
-        bands = {}
-        bands['10m'] = ['B2', 'B3', 'B4', 'B8']  # multispectral bands
-        bands['20m'] = ['B12']  # SWIR band
-        bands['60m'] = ['QA60']  # QA band
-
-        im_fn = {}
-        for key in bands.keys():
-            im_fn[key] = im_date + '_' + satname[0] + '_' + inputs['sitename'] + '_median_' + key + suffix
-        # if two images taken at the same date add 'dup' to the name (duplicate)
-        if any(im_fn['10m'] in _ for _ in all_names):
-            for key in bands.keys():
-                im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_dup' + suffix
-            # also check for triplicates (only on S2 imagery) and add 'tri' to the name
-            if im_fn['10m'] in all_names:
-                for key in bands.keys():
-                    im_fn[key] = im_date + '_' + satname + '_' + inputs['sitename'] + '_' + key + '_tri' + suffix
-
-        # download .tif from EE
-        get_url('data', median_img, ee.Number(10), inputs['polygon'], filepaths[1], bands['10m'])
-        get_url('data', median_img, ee.Number(20), inputs['polygon'], filepaths[2], bands['20m'])
-        get_url('data', median_img, ee.Number(60), inputs['polygon'], filepaths[3], bands['20m'])
-        print('Downloaded')
-
-        # rename the file as the image is downloaded as 'data.tif'
-        # locate download
-        local_data_10m = filepaths[1] + '\data.tif'
-        local_data_20m = filepaths[2] + '\data.tif'
-        local_data_60m = filepaths[3] + '\data.tif'
-
-        try:
-            os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[1], im_fn['10m']))
-            os.rename(local_data_10m, os.path.join(filepaths[1], im_fn['10m']))
-
-        try:
-            os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[2], im_fn['20m']))
-            os.rename(local_data_20m, os.path.join(filepaths[2], im_fn['20m']))
-
-        try:
-            os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
-        except:  # overwrite if already exists
-            os.remove(os.path.join(filepaths[3], im_fn['60m']))
-            os.rename(local_data_60m, os.path.join(filepaths[3], im_fn['60m']))
-
-        # metadata for .txt file
-        filename_txt = im_fn['10m'].replace('_10m', '').replace('tif', 'txt')
-        metadict = {'filename': im_fn['10m'],
-                    'acc_georef': 1,
-                    'epsg': metadata['bands'][0]['crs'][5:],
-                    'median_no': sum_img}
-
-
-        # write metadata
-    with open(os.path.join(filepaths[0], filename_txt), 'w') as f:
-        for key in metadict.keys():
-            f.write('%s\t%s\n' % (key, metadict[key]))
-    print('')
-
-    # once all images have been downloaded, load metadata from .txt files
-    metadata = get_metadata(inputs)
-
-    # save metadata dict
-    with open(os.path.join(im_folder, inputs['sitename'] + '_metadata' + '.pkl'), 'wb') as f:
-        pickle.dump(metadata, f)
-
-    return metadata
 
 
 def retrieve_training_images(inputs):
@@ -1497,8 +1441,48 @@ def retrieve_training_images(inputs):
 
     return metadata
 
+def check_training_images_available(inputs):
 
-def get_url(name, image, scale, region, filepath, bands):
+    # check if dates are in correct order
+    dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
+    if dates[1] <= dates[0]:
+        raise Exception('Verify that your dates are in the correct order')
+
+    # check if EE was initialised or not
+    try:
+        ee.ImageCollection('LANDSAT/LT05/C01/T1_TOA')
+    except:
+        ee.Initialize()
+
+    # check how many images are available in Tier 1 and Sentinel Level-1C
+    col_names_T1 = {'L5':'LANDSAT/LT05/C01/T1_TOA',
+                 'L7':'LANDSAT/LE07/C01/T1_TOA',
+                 'L8':'LANDSAT/LC08/C01/T1_TOA',
+                 'S2':'COPERNICUS/S2'}
+
+    im_dict_T1 = {}
+    for satname in inputs['sat_list']:
+
+        # get list of images in EE collection
+        while True:
+            try:
+
+                ee_col = ee.ImageCollection(col_names_T1[satname])\
+                            .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
+                            .filterDate(inputs['dates'][0],inputs['dates'][1]) \
+                            .sort('CLOUDY_PIXEL_PERCENTAGE')
+
+                im_list = ee_col.getInfo().get('features')
+                break
+            except:
+                continue
+
+        im_dict_T1[satname] = im_list
+
+    return im_dict_T1
+
+
+def get_url_optical(name, image, scale, region, filepath, bands):
     """It will open and download automatically a zip folder containing Geotiff data of 'image'.
     If additional parameters are needed, see also:
     https://github.com/google/earthengine-api/blob/master/python/ee/image.py
@@ -1525,148 +1509,19 @@ def get_url(name, image, scale, region, filepath, bands):
     with zipfile.ZipFile(local_zip) as local_zipfile:
         return local_zipfile.extractall(path=str(filepath))
 
+def get_sar_url(image, scale, region, filepath):
 
-def get_s2_sr_cld_col(aoi, start_date, end_date, CLOUD_FILTER):
-    """
-    ### Build a Sentinel-2 collection
+    path = image.getDownloadURL({
+        'name': 'data',
+        'scale': scale,
+        'region': region,
+        'filePerBand': False,
+        'bands': ['VV','VH']
+    })
 
-    [Sentinel-2 surface reflectance]
-    (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR)
-    and [Sentinel-2 cloud probability]
-    (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_CLOUD_PROBABILITY)
-    are two different image collections. Each collection must be filtered
-    similarly (e.g., by date and bounds) and then the two filtered collections
-    must be joined.
-
-    Define a function to filter the SR and s2cloudless collections
-    according to area of interest and date parameters, then join them on
-    the `system:index` property. The result is a copy of the SR collection
-    where each image has a new `'s2cloudless'` property whose value is the
-    corresponding s2cloudless image.
-
-    Parameters
-    ----------
-    aoi : TYPE
-        DESCRIPTION.
-    start_date : TYPE
-        DESCRIPTION.
-    end_date : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    TYPE
-        DESCRIPTION.
-
-    """
-    # End date from user input range
-    user_end = start_date.split("-")
-    # Period of Sentinel 2 data before Surface reflectance data is available
-    start = datetime(2015, 6, 23)
-    end = datetime(2019, 1, 28)
-
-    # Is end date within pre S2_SR period?
-    if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
-        # Import and filter S2 SR.
-        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR')
-            .filterBounds(aoi)
-            .filterDate(start_date, end_date)
-            .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
-    else:
-        # Import and filter S2 SR.
-        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2')
-            .filterBounds(aoi)
-            .filterDate(start_date, end_date)
-            .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
-
-    # Import and filter s2cloudless.
-    s2_cloudless_col = (ee.ImageCollection('COPERNICUS/S2_CLOUD_PROBABILITY')
-        .filterBounds(aoi)
-        .filterDate(start_date, end_date))
-
-    ##Print Images in Collection
-    #List Images in Collection
-    img_list = s2_sr_col.toList(500)
-    sum_img = len(img_list.getInfo())
-    print ('- Cloud minimal images in Median:')
-    print ('   S2: ' + str(sum_img))
-
-    # Join the filtered s2cloudless collection to the SR collection by the 'system:index' property.
-    return ee.ImageCollection(ee.Join.saveFirst('s2cloudless').apply(**{
-        'primary': s2_sr_col,
-        'secondary': s2_cloudless_col,
-        'condition': ee.Filter.equals(**{
-            'leftField': 'system:index',
-            'rightField': 'system:index'
-        })
-    })), sum_img
-
-
-def time_in_range(start, end, x):
-    """
-    Return true if x is in the date range [start, end]
-
-    Parameters
-    ----------
-    start : datetime(x,y,z)
-        Date time format start
-    end : datetime(x,y,z)
-        Date time format end
-    x : datetime(x,y,z)
-        Is Date time format within start / end
-
-    Returns
-    -------
-    TYPE
-        True/False.
-    """
-
-    if start <= end:
-        return start <= x <= end
-    else:
-        return start <= x or x <= end
-
-
-def create_folder_structure(im_folder, satname):
-    """
-    Create the structure of subfolders for each satellite mission
-
-    KV WRL 2018
-
-    Arguments:
-    -----------
-    im_folder: str
-        folder where the images are to be downloaded
-    satname:
-        name of the satellite mission
-
-    Returns:
-    -----------
-    filepaths: list of str
-        filepaths of the folders that were created
-    """
-    # one folder for the metadata (common to all satellites)
-    filepaths = [os.path.join(im_folder, satname, 'meta')]
-
-
-    # subfolders depending on satellite mission
-    if satname == 'L5':
-        filepaths.append(os.path.join(im_folder, satname, '30m'))
-    elif satname in ['L7','L8']:
-        filepaths.append(os.path.join(im_folder, satname, 'pan'))
-        filepaths.append(os.path.join(im_folder, satname, 'ms'))
-    elif satname in ['S2']:
-        filepaths.append(os.path.join(im_folder, satname, '10m'))
-        filepaths.append(os.path.join(im_folder, satname, '20m'))
-        filepaths.append(os.path.join(im_folder, satname, '60m'))
-    elif satname == 'S1':
-        filepaths.append(os.path.join(im_folder, satname))
-
-    # create the sub-folders if they don't exist already
-    for fp in filepaths:
-        if not os.path.exists(fp): os.makedirs(fp)
-
-    return filepaths
+    local_zip, headers = urlretrieve(path)
+    with zipfile.ZipFile(local_zip) as local_zipfile:
+        return local_zipfile.extractall(path=str(filepath))
 
 
 def get_metadata(inputs):
@@ -1733,3 +1588,145 @@ def get_metadata(inputs):
         pickle.dump(metadata, f)
 
     return metadata
+
+def create_folder_structure(im_folder, satname):
+    """
+    Create the structure of subfolders for each satellite mission
+
+    KV WRL 2018
+
+    Arguments:
+    -----------
+    im_folder: str
+        folder where the images are to be downloaded
+    satname:
+        name of the satellite mission
+
+    Returns:
+    -----------
+    filepaths: list of str
+        filepaths of the folders that were created
+    """
+    # one folder for the metadata (common to all satellites)
+    filepaths = [os.path.join(im_folder, satname, 'meta')]
+
+
+    # subfolders depending on satellite mission
+    if satname == 'L5':
+        filepaths.append(os.path.join(im_folder, satname, '30m'))
+    elif satname in ['L7','L8']:
+        filepaths.append(os.path.join(im_folder, satname, 'pan'))
+        filepaths.append(os.path.join(im_folder, satname, 'ms'))
+    elif satname in ['S2']:
+        filepaths.append(os.path.join(im_folder, satname, '10m'))
+        filepaths.append(os.path.join(im_folder, satname, '20m'))
+        filepaths.append(os.path.join(im_folder, satname, '60m'))
+    elif satname == 'S1':
+        filepaths.append(os.path.join(im_folder, satname))
+
+    # create the sub-folders if they don't exist already
+    for fp in filepaths:
+        if not os.path.exists(fp): os.makedirs(fp)
+
+    return filepaths
+
+
+def get_s2_sr_cld_col(aoi, start_date, end_date, CLOUD_FILTER):
+    """
+    ### Build a Sentinel-2 collection
+
+    [Sentinel-2 surface reflectance]
+    (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR)
+    and [Sentinel-2 cloud probability]
+    (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_CLOUD_PROBABILITY)
+    are two different image collections. Each collection must be filtered
+    similarly (e.g., by date and bounds) and then the two filtered collections
+    must be joined.
+
+    Define a function to filter the SR and s2cloudless collections
+    according to area of interest and date parameters, then join them on
+    the `system:index` property. The result is a copy of the SR collection
+    where each image has a new `'s2cloudless'` property whose value is the
+    corresponding s2cloudless image.
+
+    Parameters
+    ----------
+    aoi : TYPE
+        DESCRIPTION.
+    start_date : TYPE
+        DESCRIPTION.
+    end_date : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    # End date from user input range
+    user_end = start_date.split("-")
+    # Period of Sentinel 2 data before Surface reflectance data is available
+    start = datetime(2015, 6, 23)
+    end = datetime(2019, 1, 28)
+
+    # Is end date within pre S2_SR period?
+    if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
+        # Import and filter S2 SR.
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR')
+                     .filterBounds(aoi)
+                     .filterDate(start_date, end_date)
+                     .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
+    else:
+        # Import and filter S2 SR.
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2')
+                     .filterBounds(aoi)
+                     .filterDate(start_date, end_date)
+                     .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
+
+    # Import and filter s2cloudless.
+    s2_cloudless_col = (ee.ImageCollection('COPERNICUS/S2_CLOUD_PROBABILITY')
+                        .filterBounds(aoi)
+                        .filterDate(start_date, end_date))
+
+    ##Print Images in Collection
+    # List Images in Collection
+    img_list = s2_sr_col.toList(500)
+    sum_img = len(img_list.getInfo())
+    print('- Cloud minimal images in Median:')
+    print('   S2: ' + str(sum_img))
+
+    # Join the filtered s2cloudless collection to the SR collection by the 'system:index' property.
+    return ee.ImageCollection(ee.Join.saveFirst('s2cloudless').apply(**{
+        'primary': s2_sr_col,
+        'secondary': s2_cloudless_col,
+        'condition': ee.Filter.equals(**{
+            'leftField': 'system:index',
+            'rightField': 'system:index'
+        })
+    })), sum_img
+
+def time_in_range(start, end, x):
+    """
+    Return true if x is in the date range [start, end]
+
+    Parameters
+    ----------
+    start : datetime(x,y,z)
+        Date time format start
+    end : datetime(x,y,z)
+        Date time format end
+    x : datetime(x,y,z)
+        Is Date time format within start / end
+
+    Returns
+    -------
+    TYPE
+        True/False.
+    """
+
+    if start <= end:
+        return start <= x <= end
+    else:
+        return start <= x or x <= end
+
