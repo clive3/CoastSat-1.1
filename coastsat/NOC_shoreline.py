@@ -724,4 +724,3 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     shoreline = contours_array
 
     return shoreline
-
