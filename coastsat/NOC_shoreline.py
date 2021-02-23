@@ -216,14 +216,13 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # plot image 2 (classification)
     ax2.imshow(image_class)
     ax2.axis('off')
-
+    """"
     patches = [mpatches.Patch(color=[1,1,1], label='unclassified')]
     for key in class_keys:
         class_colour = classes[key][1]
         patches.append(mpatches.Patch(color=class_colour, label=key))
-
     patches.append(mlines.Line2D([],[],color='k',linestyle='-', label='shoreline'))
-#    ax2.legend(handles=patches, bbox_to_anchor=(1, 0.5), fontsize=10)
+    ax2.legend(handles=patches, bbox_to_anchor=(1, 0.5), fontsize=10)"""
     ax2.set_title(date_string, fontweight='bold', fontsize=16)
 
     # plot image 3 (MNDWI)
