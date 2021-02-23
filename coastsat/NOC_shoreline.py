@@ -140,8 +140,10 @@ def extract_shorelines_optical(metadata, settings):
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
                      settings, date, satname):
 
-    sitename = settings['inputs']['sitename']
-    filepath_data = settings['inputs']['filepath']
+    inputs = settings['inputs']
+    sitename = inputs['sitename']
+    filepath_data = inputs['filepath']
+    threshold = inputs['threshold']
 
     # subfolder where the .jpg file is stored if the user accepts the shoreline detection
     filepath = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
@@ -150,7 +152,8 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
     #  image_classifiery will become filled with labels
     image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
-    image_classifieried = np.copy(image_RGB)
+    image_classified = np.copy(image_RGB)
+    image_classified = np.where(np.isnan(image_classified), 1.0, image_classified)
 
     # compute MNDWI grayscale image
     image_mndwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
@@ -158,7 +161,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     image_mndwi_buffer = np.copy(image_mndwi)
     image_mndwi_buffer[~image_ref_buffer] = np.nan
 
-    # for each class add it to image_classifieried and
+    # for each class add it to image_classified and
     # extract the MDWI values for all pixels in that class
     classes = settings['classes']
     class_keys = classes.keys()
@@ -168,11 +171,13 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         class_label = classes[key][0]
         class_colour = classes[key][1]
 
-        image_classifieried[image_labels[:, :, class_label-1], 0] = class_colour[0]
-        image_classifieried[image_labels[:, :, class_label-1], 1] = class_colour[1]
-        image_classifieried[image_labels[:, :, class_label-1], 2] = class_colour[2]
+        image_classified[image_labels[:, :, class_label-1], 0] = class_colour[0]
+        image_classified[image_labels[:, :, class_label-1], 1] = class_colour[1]
+        image_classified[image_labels[:, :, class_label-1], 2] = class_colour[2]
 
         mndwi_pixels[class_label] = image_mndwi[image_labels[:, :, class_label-1]]
+
+    image_classified[image_classified == 999] = 0
 
     # create figure
     if plt.get_fignums():
@@ -201,7 +206,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # change the color of nans to either black (0.0) or white (1.0) or somewhere in between
     nan_color = 1.0
     image_RGB = np.where(np.isnan(image_RGB), nan_color, image_RGB)
-    image_class = np.where(np.isnan(image_classifieried), 1.0, image_classifieried)
+    image_class = np.where(np.isnan(image_classified), 1, image_classified)
 
     # plot image 1 (RGB)
     ax1.imshow(image_RGB)
@@ -213,7 +218,6 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     ax2.axis('off')
 
     patches = [mpatches.Patch(color=[1,1,1], label='unclassified')]
-
     for key in class_keys:
         class_colour = classes[key][1]
         patches.append(mpatches.Patch(color=class_colour, label=key))
@@ -264,7 +268,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
-    t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label='threshold')
+    t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
+    thresh_label = ax4.text(t_mndwi+binwidth, 9, str(f'{t_mndwi:4.3f}'), rotation=90)
+    ax4.axvline(x=threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {threshold:4.3f}')
+
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
     # adjust the threshold manually by letting the user change the threshold
@@ -298,6 +305,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
             sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+            thresh_label.set(x=t_mndwi+binwidth, text=str(f'{t_mndwi:4.3f}'))
             fig.canvas.draw_idle()
         else:
             ax4.set_title('MNDWI pixel intensities and threshold')
