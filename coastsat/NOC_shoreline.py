@@ -4,31 +4,33 @@ from coastsat.SDS_shoreline import *
 
 from coastsat import NOC_preprocess, NOC_tools, NOC_classify
 
+from utils.print_utils import printProgress, printWarning
+
 
 def extract_shorelines_optical(metadata, settings):
 
     inputs = settings['inputs']
-    sitename = inputs['sitename']
+    site_name = inputs['site_name']
     classes = settings['classes']
 
-    filepath_data = inputs['filepath']
+    median_dir_path = inputs['median_dir_path']
     filepath_models = os.path.join(os.getcwd(), 'classification', 'models')
 
     # initialise output structure
     output = {}
     # create a subfolder to store the .jpg images showing the detection
-    filepath_jpg = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
+    filepath_jpg = os.path.join(median_dir_path, 'jpg_files', 'detection')
     if not os.path.exists(filepath_jpg):
         os.makedirs(filepath_jpg)
     # close all open figures
     plt.close('all')
 
     # loop through satellite list
-    for satname in metadata.keys():
+    for sat_name in metadata.keys():
 
         # get images
-        filepath = SDS_tools.get_filepath(inputs, satname)
-        filenames = metadata[satname]['filenames']
+        filepath = SDS_tools.get_filepath(inputs, sat_name)
+        file_names = metadata[sat_name]['file_names']
 
         # initialise the output variables
         output_timestamp = []  # datetime at which the image was acquired (UTC time)
@@ -40,7 +42,7 @@ def extract_shorelines_optical(metadata, settings):
         output_median_no = []
 
         # load classifiers
-        if satname in ['L5', 'L7', 'L8']:
+        if sat_name in ['L5', 'L7', 'L8']:
             pixel_size = 15
             if settings['sand_color'] == 'dark':
                 classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_dark.pkl'))
@@ -49,26 +51,26 @@ def extract_shorelines_optical(metadata, settings):
             else:
                 classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat.pkl'))
 
-        elif satname == 'S2':
+        elif sat_name == 'S2':
             pixel_size = 10
             classifier = joblib.load(os.path.join(filepath_models, 'NN_6classes_S2.pkl'))
 
         # convert settings['min_beach_area'] from  metres to pixels
         min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
 
-        print(f'{satname} extracting shorelines for: {len(filenames)} images')
+        print(f'{sat_name} extracting shorelines for: {len(file_names)} images')
         print()
 
         # loop through the images
-        for file_index in range(len(filenames)):
+        for file_index in range(len(file_names)):
 
             # get image filename
-            fn = SDS_tools.get_filenames(filenames[file_index], filepath, satname)
+            fn = SDS_tools.get_file_names(file_names[file_index], filepath, sat_name)
             # preprocess image (cloud mask + pansharpening/downsampling)
             image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-                SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
+                SDS_preprocess.preprocess_single(fn, sat_name, settings['cloud_mask_issue'])
             # get image spatial reference system (epsg code) from metadata dict
-            image_epsg = metadata[satname]['epsg'][file_index]
+            image_epsg = metadata[sat_name]['epsg'][file_index]
 
             # compute cloud_cover percentage (with no data pixels)
             cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
@@ -94,25 +96,25 @@ def extract_shorelines_optical(metadata, settings):
                                                                min_beach_area_pixels, classifier)
 
             # find the shoreline interactively
-            date = filenames[file_index][:19]
+            date = file_names[file_index][:19]
             skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
                                                      image_ref_buffer, image_epsg, georef, settings, date,
-                                                     satname)
+                                                     sat_name)
             # if the user decides to skip the image, continue and do not save the mapped shoreline
             if skip_image:
                 continue
 
             # append to output variables
-            output_timestamp.append(metadata[satname]['dates'][file_index])
+            output_timestamp.append(metadata[sat_name]['dates'][file_index])
             output_shoreline.append(shoreline)
-            output_filename.append(filenames[file_index])
+            output_filename.append(file_names[file_index])
             output_cloudcover.append(cloud_cover)
-            output_geoaccuracy.append(metadata[satname]['acc_georef'][file_index])
+            output_geoaccuracy.append(metadata[sat_name]['acc_georef'][file_index])
             output_idxkeep.append(file_index)
-            output_median_no.append(metadata[satname]['median_no'][file_index])
+            output_median_no.append(metadata[sat_name]['median_no'][file_index])
 
         # create dictionnary of output
-        output[satname] = {
+        output[sat_name] = {
             'dates': output_timestamp,
             'shorelines': output_shoreline,
             'filename': output_filename,
@@ -130,23 +132,141 @@ def extract_shorelines_optical(metadata, settings):
     output = SDS_tools.merge_output(output)
 
     # save outputput structure as output.pkl
-    filepath = os.path.join(filepath_data, sitename)
-    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
+    filepath = os.path.join(median_dir_path, site_name)
+    with open(os.path.join(filepath, site_name + '_output.pkl'), 'wb') as f:
+        pickle.dump(output, f)
+
+    return output
+
+
+def extract_shorelines_optical_PS(metadata, settings):
+
+    inputs = settings['inputs']
+    site_name = inputs['site_name']
+    classes = settings['classes']
+
+    median_dir_path = inputs['filepath']
+    filepath_models = os.path.join(os.getcwd(), 'classification', 'models')
+
+    # initialise output structure
+    output = {}
+    # create a subfolder to store the .jpg images showing the detection
+    filepath_jpg = os.path.join(median_dir_path, site_name, 'jpg_files', 'detection')
+    if not os.path.exists(filepath_jpg):
+        os.makedirs(filepath_jpg)
+    # close all open figures
+    plt.close('all')
+
+    # loop through satellite list
+    for sat_name in metadata.keys():
+
+        # get images
+        filepath = SDS_tools.get_filepath(inputs, sat_name)
+        file_names = metadata[sat_name]['file_names']
+
+        # initialise the output variables
+        output_timestamp = []  # datetime at which the image was acquired (UTC time)
+        output_shoreline = []  # vector of shoreline points
+        output_filename = []  # filename of the images from which the shorelines where derived
+        output_cloudcover = []  # cloud cover of the images
+        output_geoaccuracy = []  # georeferencing accuracy of the images
+        output_idxkeep = []  # index that were kept during the analysis (cloudy images are skipped)
+        output_median_no = []
+
+        # load classifiers
+        if sat_name in ['L5', 'L7', 'L8']:
+            pixel_size = 15
+            if settings['sand_color'] == 'dark':
+                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_dark.pkl'))
+            elif settings['sand_color'] == 'bright':
+                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_bright.pkl'))
+            else:
+                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat.pkl'))
+
+        elif sat_name == 'S2':
+            pixel_size = 10
+            classifier = joblib.load(os.path.join(filepath_models, 'NN_6classes_S2.pkl'))
+
+        # convert settings['min_beach_area'] from  metres to pixels
+        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
+
+        print(f'{sat_name} extracting shorelines for: {len(file_names)} images')
+        print()
+
+        # loop through the images
+        for file_index in range(len(file_names)):
+
+            # get image filename
+            fn = SDS_tools.get_file_names(file_names[file_index], filepath, sat_name)
+            # preprocess image (cloud mask + pansharpening/downsampling)
+            image_ms, georef = NOC_preprocess.preprocess_S2(fn)
+            # get image spatial reference system (epsg code) from metadata dict
+            image_epsg = metadata[sat_name]['epsg'][file_index]
+
+            cloud_mask = np.zeros((image_ms.shape[:2]), dtype=bool)
+
+            # calculate a buffer around the reference shoreline (if any has been digitised)
+            image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
+                                                       pixel_size, settings)
+
+            # classify image with NN classifier
+            image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
+                                                               min_beach_area_pixels, classifier)
+
+            # find the shoreline interactively
+            date = file_names[file_index][:19]
+            skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
+                                                     image_ref_buffer, image_epsg, georef, settings, date,
+                                                     sat_name)
+            # if the user decides to skip the image, continue and do not save the mapped shoreline
+            if skip_image:
+                continue
+
+            # append to output variables
+            output_timestamp.append(metadata[sat_name]['dates'][file_index])
+            output_shoreline.append(shoreline)
+            output_filename.append(file_names[file_index])
+            output_cloudcover.append(cloud_cover)
+            output_geoaccuracy.append(metadata[sat_name]['acc_georef'][file_index])
+            output_idxkeep.append(file_index)
+            output_median_no.append(metadata[sat_name]['median_no'][file_index])
+
+        # create dictionnary of output
+        output[sat_name] = {
+            'dates': output_timestamp,
+            'shorelines': output_shoreline,
+            'filename': output_filename,
+            'cloud_cover': output_cloudcover,
+            'geoaccuracy': output_geoaccuracy,
+            'idx': output_idxkeep,
+            'median_no': output_median_no
+        }
+        print('')
+
+    # close figure window if still open
+    if plt.get_fignums():
+        plt.close()
+
+    output = SDS_tools.merge_output(output)
+
+    # save outputput structure as output.pkl
+    filepath = os.path.join(median_dir_path, site_name)
+    with open(os.path.join(filepath, site_name + '_output.pkl'), 'wb') as f:
         pickle.dump(output, f)
 
     return output
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
-                     settings, date, satname):
+                     settings, date, sat_name):
 
     inputs = settings['inputs']
-    sitename = inputs['sitename']
-    filepath_data = inputs['filepath']
+    site_name = inputs['site_name']
+    median_dir_path = inputs['filepath']
     threshold = inputs['threshold']
 
     # subfolder where the .jpg file is stored if the user accepts the shoreline detection
-    filepath = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
+    filepath = os.path.join(median_dir_path, site_name, 'jpg_files', 'detection')
     # format date
     date_string = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d')
 
@@ -211,7 +331,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # plot image 1 (RGB)
     ax1.imshow(image_RGB)
     ax1.axis('off')
-    ax1.set_title(sitename, fontweight='bold', fontsize=16)
+    ax1.set_title(site_name, fontweight='bold', fontsize=16)
 
     # plot image 2 (classification)
     ax2.imshow(image_class)
@@ -356,7 +476,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
     # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
-        fig.savefig(os.path.join(filepath, date + '_' + satname + '.jpg'), dpi=150)
+        fig.savefig(os.path.join(filepath, date + '_' + sat_name + '.jpg'), dpi=150)
 
     # don't close the figure window, but remove all axes and settings, ready for next plot
     for ax in fig.axes:
@@ -372,6 +492,9 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
 
     # calculate Normalized Difference Modified Water Index (SWIR - G)
     image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
+
+    print(f'@@@ {np.nanmin(image_mwi)} {np.nanmax(image_mwi)}')
+
     # calculate Normalized Difference Modified Water Index (NIR - G)
     image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
     # stack indices together
@@ -420,48 +543,42 @@ def extract_shorelines_sar(metadata, settings):
 
     inputs = settings['inputs']
 
-    sitename = inputs['sitename']
-    base_filepath = inputs['filepath']
-    satname = inputs['sat_list'][0]
+    site_name = inputs['site_name']
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
+    median_dir_path = inputs['median_dir_path']
+    sat_name = inputs['sat_list'][0]
     pixel_size = inputs['pixel_size']
 
     # initialise output structure
     output = {}
     # create a subfolder to store the .jpg images showing the detection
-    filepath_jpg = os.path.join(base_filepath, sitename, 'jpg_files', 'detection')
+    filepath_jpg = os.path.join(median_dir_path, 'jpg_files', 'detection')
     if not os.path.exists(filepath_jpg):
         os.makedirs(filepath_jpg)
     # close all open figures
     plt.close('all')
 
-    print('Mapping shorelines:')
-
-    # get images
-    data_path = NOC_tools.get_filepath(settings['inputs'], satname)
-    filenames = metadata[satname]['filenames']
+    printProgress('mapping shorelines')
 
     # initialise the output variables
-    output_timestamp = []  # datetime at which the image was acquired (UTC time)
-    output_shoreline = []  # vector of shoreline points
-    output_filename = []  # filename of the images from which the shorelines where derived
-    output_geoaccuracy = []  # georeferencing accuracy of the images
-    output_median_no = []
+    output_shorelines = []  # vector of shoreline points
+    output_filenames = []  # filename of the images from which the shorelines where derived
+    output_date_start = []  # cloud cover of the images
+    output_date_end = []  # georeferencing accuracy of the images
+    output_number_median_images = []  # index that were kept during the analysis (cloudy images are skipped)
 
-    # loop through the images
-    for i in range(len(filenames)):
+    file_names = metadata[sat_name]['file_names']
 
-        print('\r%s:   %d%%' % (satname, int(((i + 1) / len(filenames)) * 100)))
-        print()
+    ## extract the shoreline from all the filenames in the metadata
+    for file_index, file_name in enumerate(file_names):
+        file_path = os.path.join(median_dir_path, sat_name, file_name)
 
-        # get image filename
-        filename = filenames[i]
-
-        file_path = os.path.join(data_path, filename)
-
-        sar_image, georef = NOC_preprocess.preprocess_sar(file_path, satname)
+        ## read the geotiff
+        sar_image, georef = NOC_preprocess.preprocess_sar(file_path, sat_name)
 
         # get image spatial reference system (epsg code) from metadata dict
-        image_epsg = metadata[satname]['epsg'][i]
+        image_epsg = metadata[sat_name]['epsg'][0]
 
         buffer_shape = (sar_image.shape[0], sar_image.shape[1])
 
@@ -472,59 +589,57 @@ def extract_shorelines_sar(metadata, settings):
         else:
             image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
-        # find the shoreline interactively
-        date = filename[:19]
-        skip_image, shorelines = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
-                                                     settings, date,  satname)
+        skip_image, shoreline = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
+                                                     settings, date_start,  sat_name)
 
-        # if the user decides to skip the image, continue and do not save the mapped shoreline
         if skip_image:
             continue
 
-        # append to output variables
-        output_timestamp.append(metadata[satname]['dates'][i])
-        output_shoreline.append(shorelines)
-        output_filename.append(filenames[i])
-        output_geoaccuracy.append(metadata[satname]['acc_georef'][i])
-        output_median_no.append(metadata[satname]['median_no'][i])
+        ## get the metadata for the output
+        number_median_images = metadata[sat_name]['number_median_images'][file_index]
+        date_start = metadata[sat_name]['date_start'][file_index]
+        date_end = metadata[sat_name]['date_end'][file_index]
 
+        output_filenames.append(file_name)
+        output_shorelines.append(shoreline)
+        output_date_start.append(date_start)
+        output_date_end.append(date_end)
+        output_number_median_images.append(number_median_images)
+
+    printProgress('saving output file')
     # create dictionnary of output
-    output[satname] = {
-        'dates': output_timestamp,
-        'shorelines': output_shoreline,
-        'filename': output_filename,
-        'geoaccuracy': output_geoaccuracy,
-        'median_no': output_median_no
-    }
-    print('')
+    output[sat_name] = {'file_names': output_filenames,
+                        'shorelines': output_shorelines,
+                        'date_start': output_date_start,
+                        'date_end': output_date_end,
+                        'number_median_images': output_number_median_images}
+
+
+    # change the format to have one list sorted by date with all the shorelines (easier to use)
+    output = NOC_tools.merge_output_median(output)
+
+    # save output structure as @@@_output_S1.pkl
+    with open(os.path.join(median_dir_path, site_name + '_output_S1.pkl'), 'wb') as f:
+        pickle.dump(output, f)
 
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
 
-    output = SDS_tools.merge_output(output)
-
-    # save outputput structure as output.pkl
-    filepath = os.path.join(base_filepath, sitename)
-    with open(os.path.join(filepath, sitename + '_output.pkl'), 'wb') as f:
-        pickle.dump(output, f)
-
     return output
 
 
 def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
-                     settings, date, satname):
+                     settings, date, sat_name):
 
     inputs = settings['inputs']
     polarisation = inputs['polarisation']
+    start_date = inputs['dates'][0]
 
-    sitename = inputs['sitename']
-    filepath_data = inputs['filepath']
+    site_name = inputs['site_name']
+    median_dir_path = inputs['median_dir_path']
     # subfolder where the .jpg file is stored if the user accepts the shoreline detection
-    filepath = os.path.join(filepath_data, sitename, 'jpg_files', 'detection')
-
-    # format date
-    date_str = datetime.strptime(date, '%Y-%m-%d-%H-%M-%S').strftime('%Y-%m-%d')
+    filepath = os.path.join(median_dir_path, 'jpg_files', 'detection')
 
     # compute classified image
     if polarisation == 'VV':
@@ -569,12 +684,12 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # plot image 1 (RGB)
     ax1.imshow(image_pol)
     ax1.axis('off')
-    ax1.set_title(sitename, fontweight='bold', fontsize=16)
+    ax1.set_title(site_name, fontweight='bold', fontsize=16)
 
     # plot image 1 (grey)
     ax2.imshow(image_pol, cmap='gray')
     ax2.axis('off')
-    ax2.set_title(date_str, fontweight='bold', fontsize=16)
+    ax2.set_title(start_date, fontweight='bold', fontsize=16)
 
     # plot image 3 (blue/red)
     ax3.imshow(image_pol, cmap='bwr')
@@ -690,15 +805,14 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
 
     # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
-        fig.savefig(os.path.join(filepath, date + '_' + satname + '.jpg'), dpi=150)
+        fig.savefig(os.path.join(filepath, date + '_' + sat_name + '.jpg'), dpi=150)
 
     # don't close the figure window, but remove all axes and settings, ready for next plot
     for ax in fig.axes:
         ax.clear()
 
     if inputs['create_reference_shoreline']:
-        filepath = os.path.join(inputs['filepath'], sitename)
-        with open(os.path.join(filepath, sitename + '_reference_shoreline.pkl'), 'wb') as f:
+        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(shorelines, f)
 
     return skip_image, shorelines
