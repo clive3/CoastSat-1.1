@@ -545,7 +545,6 @@ def extract_shorelines_sar(metadata, settings):
 
     site_name = inputs['site_name']
     date_start = inputs['dates'][0]
-    date_end = inputs['dates'][1]
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_list'][0]
     pixel_size = inputs['pixel_size']
