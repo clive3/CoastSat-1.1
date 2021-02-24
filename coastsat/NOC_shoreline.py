@@ -263,7 +263,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     inputs = settings['inputs']
     site_name = inputs['site_name']
     median_dir_path = inputs['filepath']
-    threshold = inputs['threshold']
+    reference_threshold = inputs['reference_threshold']
 
     # subfolder where the .jpg file is stored if the user accepts the shoreline detection
     filepath = os.path.join(median_dir_path, site_name, 'jpg_files', 'detection')
@@ -389,8 +389,8 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
     thresh_label = ax4.text(t_mndwi+binwidth, 9, str(f'{t_mndwi:4.3f}'), rotation=90)
-    if not threshold: threshold = t_mndwi
-    ax4.axvline(x=threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {threshold:4.3f}')
+    if not reference_threshold: reference_threshold = t_mndwi
+    ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
 
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
@@ -406,8 +406,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
             t_mndwi = pt[0][0]
             # if user clicked somewhere wrong and value is not between -1 and 1
             if np.abs(t_mndwi) >= 1: continue
+
             # update the plot
             t_line.set_xdata([t_mndwi, t_mndwi])
+            thresh_label.set(x=t_mndwi+binwidth, text=str(f'{t_mndwi:4.3f}'))
             # map contours with new threshold
             contours = measure.find_contours(image_mndwi_buffer, level=t_mndwi,  mask=image_ref_buffer)
             # remove contours that contain NaNs (due to cloud pixels in the contour)
@@ -425,7 +427,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
             sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
-            thresh_label.set(x=t_mndwi+binwidth, text=str(f'{t_mndwi:4.3f}'))
+
             fig.canvas.draw_idle()
         else:
             ax4.set_title('MNDWI pixel intensities and threshold')
@@ -634,6 +636,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     inputs = settings['inputs']
     polarisation = inputs['polarisation']
     start_date = inputs['dates'][0]
+    reference_threshold = inputs['reference_threshold']
 
     site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
@@ -698,7 +701,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # plot histogram of sigma values
     ax4.set_facecolor('0.75')
     ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
-    ax4.set(ylabel='PDF', yticklabels=[], xlim=[np.nanmin(sar_image), np.nanmax(sar_image)])
+    ax4.set(ylabel='pixels', yticklabels=[], xlim=[np.nanmin(sar_image), np.nanmax(sar_image)])
 
     binwidth = 0.1
     bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + binwidth, binwidth)
@@ -723,7 +726,12 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
     sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
-    t_line = ax4.axvline(x=t_sar, ls='--', c='r', lw=1.5, label='threshold')
+
+    t_line = ax4.axvline(x=t_sar, ls='--', c='k', lw=1.5, label='threshold')
+    thresh_label = ax4.text(t_sar + binwidth, 0.25, str(f'{t_sar:4.2f}'), rotation=90)
+    if not reference_threshold: reference_threshold = t_sar
+    ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.2f}')
+
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
     # adjust the threshold manually by letting the user change the threshold
@@ -737,8 +745,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
         if len(pt) > 0:
             # update the threshold value
             t_sar = pt[0][0]
+
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
+            thresh_label.set(x=t_sar + binwidth, text=str(f'{t_sar:4.2f}'))
             # map contours with new threshold
             contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
             # process the water contours into a shoreline
@@ -754,6 +764,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
             sl_plot1[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             sl_plot2[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
             sl_plot3[0].set_data([sl_pix[:, 0], sl_pix[:, 1]])
+
             fig.canvas.draw_idle()
         else:
             ax4.set_title('sigma0 pixel intensities and threshold')
