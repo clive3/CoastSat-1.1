@@ -255,8 +255,6 @@ def preprocess_single(fn, satname, cloud_mask_issue):
         # read 10m bands (R,G,B,NIR)
         fn10 = fn[0]
 
-        print(f'@@@ {fn10}')
-
         data = gdal.Open(fn10, gdal.GA_ReadOnly)
         georef = np.array(data.GetGeoTransform())
         bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]

@@ -986,15 +986,12 @@ def get_S2_SR_cloud_col(aoi, date_start, date_end, CLOUD_FILTER):
 
     # Is end date within pre S2_SR period?
     if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
-
-        print(f'@@@   S2_SR')
         # Import and filter S2 SR.
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR')
                      .filterBounds(aoi)
                      .filterDate(date_start, date_end)
                      .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
     else:
-        print(f'@@@   S2')
         # Import and filter S2 SR.
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2')
                      .filterBounds(aoi)

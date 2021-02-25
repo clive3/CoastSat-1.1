@@ -4,7 +4,7 @@ from coastsat.SDS_shoreline import *
 
 from coastsat import NOC_preprocess, NOC_tools, NOC_classify
 
-from utils.print_utils import printProgress, printSuccess
+from utils.print_utils import printProgress, printSuccess, printWarning
 
 
 def extract_shorelines_optical(metadata, settings):
@@ -701,9 +701,9 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
                                                                     settings['output_epsg'],
                                                                     image_epsg)[:, [0, 1]], georef)
     else:
-        print(f'@@@ no shorelines yet')
-
+        printWarning('no shorelines yet')
         sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
+
     # plot the shoreline on the images
     sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
     sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
