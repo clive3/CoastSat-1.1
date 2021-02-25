@@ -488,8 +488,6 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     # calculate Normalized Difference Modified Water Index (SWIR - G)
     image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
 
-    print(f'@@@ {np.nanmin(image_mwi)} {np.nanmax(image_mwi)}')
-
     # calculate Normalized Difference Modified Water Index (NIR - G)
     image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
     # stack indices together
