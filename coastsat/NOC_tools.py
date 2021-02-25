@@ -1,5 +1,6 @@
 from coastsat.SDS_tools import *
 
+
 def polygon_from_kml(fn):
     """
     Extracts coordinates from a .kml file.
@@ -9,7 +10,7 @@ def polygon_from_kml(fn):
     Arguments:
     -----------
     fn: str
-        filepath + filename of the kml file to be read
+        file_path + filename of the kml file to be read
 
     Returns:
     -----------
@@ -74,17 +75,17 @@ def merge_output_median(output):
 
     # initialize output dict
     output_all = dict([])
-    satnames = list(output.keys())
-    for key in output[satnames[0]].keys():
+    sat_names = list(output.keys())
+    for key in output[sat_names[0]].keys():
         output_all[key] = []
     # create extra key for the satellite name
     output_all['sat_name'] = []
     # fill the output dict
-    for satname in list(output.keys()):
-        for key in output[satnames[0]].keys():
-            output_all[key] = output_all[key] + output[satname][key]
-        output_all['sat_name'] = output_all['sat_name'] + [_ for _ in np.tile(satname,
-                                                                            len(output[satname]['date_start']))]
+    for sat_name in list(output.keys()):
+        for key in output[sat_names[0]].keys():
+            output_all[key] = output_all[key] + output[sat_name][key]
+        output_all['sat_name'] = output_all['sat_name'] + [_ for _ in np.tile(sat_name,
+                                                                            len(output[sat_name]['date_start']))]
     # sort chronologically
     idx_sorted = sorted(range(len(output_all['date_start'])), key=output_all['date_start'].__getitem__)
     for key in output_all.keys():

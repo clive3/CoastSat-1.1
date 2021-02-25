@@ -3,7 +3,7 @@ from coastsat.SDS_preprocess import *
 from utils.print_utils import printWarning, printProgress
 
 
-def preprocess_sar(file_name, satname):
+def preprocess_sar(file_name):
 
     data = gdal.Open(file_name, gdal.GA_ReadOnly)
     georef = np.array(data.GetGeoTransform())

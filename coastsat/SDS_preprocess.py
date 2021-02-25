@@ -191,8 +191,8 @@ def preprocess_single(fn, satname, cloud_mask_issue):
     #=============================================================================================#
     elif satname == 'L8':
 
-        # read pan image
-        fn_pan = fn[0]
+        fn_pan = fn[1]
+
         data = gdal.Open(fn_pan, gdal.GA_ReadOnly)
         georef = np.array(data.GetGeoTransform())
         bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
@@ -203,7 +203,7 @@ def preprocess_single(fn, satname, cloud_mask_issue):
         ncols = im_pan.shape[1]
 
         # read ms image
-        fn_ms = fn[1]
+        fn_ms = fn[0]
         data = gdal.Open(fn_ms, gdal.GA_ReadOnly)
         bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
         im_ms = np.stack(bands, 2)
@@ -254,6 +254,9 @@ def preprocess_single(fn, satname, cloud_mask_issue):
 
         # read 10m bands (R,G,B,NIR)
         fn10 = fn[0]
+
+        print(f'@@@ {fn10}')
+
         data = gdal.Open(fn10, gdal.GA_ReadOnly)
         georef = np.array(data.GetGeoTransform())
         bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
@@ -452,6 +455,11 @@ def pansharpen(im_ms, im_pan, cloud_mask):
     vec = im_ms.reshape(im_ms.shape[0] * im_ms.shape[1], im_ms.shape[2])
     vec_mask = cloud_mask.reshape(im_ms.shape[0] * im_ms.shape[1])
     vec = vec[~vec_mask, :]
+
+    print(f'@@@ {im_ms.shape}')
+    print(f'@@@ {im_pan.shape}')
+    print(f'@@@ {vec.shape}')
+
     # apply PCA to multispectral bands
     pca = decomposition.PCA()
     vec_pcs = pca.fit_transform(vec)
