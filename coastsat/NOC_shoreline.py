@@ -14,9 +14,11 @@ def extract_shorelines_optical(metadata, settings):
 
     site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
-    sat_name = inputs['sat_name']
-    band_list = inputs['bands'][sat_name]
-    pixel_size = band_list[0][0][1]
+    sat_name = inputs['sat_list'][0]
+
+    band_list = settings['bands'][sat_name]
+    first_key = next(iter(band_list))
+    pixel_size = band_list[first_key][1]
 
     base_file_name = metadata[sat_name]['file_name'][0]
     date_start = metadata[sat_name]['date_start'][0]
