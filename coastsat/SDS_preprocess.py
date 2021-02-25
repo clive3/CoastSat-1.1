@@ -191,7 +191,7 @@ def preprocess_single(fn, satname, cloud_mask_issue):
     #=============================================================================================#
     elif satname == 'L8':
 
-        fn_pan = fn[1]
+        fn_pan = fn[0]
 
         data = gdal.Open(fn_pan, gdal.GA_ReadOnly)
         georef = np.array(data.GetGeoTransform())
@@ -203,7 +203,7 @@ def preprocess_single(fn, satname, cloud_mask_issue):
         ncols = im_pan.shape[1]
 
         # read ms image
-        fn_ms = fn[0]
+        fn_ms = fn[1]
         data = gdal.Open(fn_ms, gdal.GA_ReadOnly)
         bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
         im_ms = np.stack(bands, 2)
