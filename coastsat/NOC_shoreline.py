@@ -4,7 +4,7 @@ from coastsat.SDS_shoreline import *
 
 from coastsat import NOC_preprocess, NOC_tools, NOC_classify
 
-from utils.print_utils import printProgress
+from utils.print_utils import printProgress, printSuccess
 
 
 def extract_shorelines_optical(metadata, settings):
@@ -90,6 +90,125 @@ def extract_shorelines_optical(metadata, settings):
     image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
                                                pixel_size, settings)
 
+    printProgress('classifying image')
+    # classify image with NN classifier
+    image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
+                                                       min_beach_area_pixels, classifier)
+
+    printProgress('select threshold')
+    # find the shoreline interactively
+    skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
+                                             image_ref_buffer, image_epsg, georef, settings,
+                                             date_start, sat_name)
+    # if the user decides to skip the image, continue and do not save the mapped shoreline
+    if skip_image:
+        return []
+
+    # append to output variables
+    output_shorelines.append(shoreline)
+    output_filenames.append(file_name)
+    output_date_start.append(date_start)
+    output_date_end.append(date_end)
+    output_cloud_cover.append(cloud_cover)
+    output_number_median_images.append(number_median_images)
+
+    output[sat_name] = {'file_names': output_filenames,
+                        'shorelines': output_shorelines,
+                        'date_start': output_date_start,
+                        'date_end': output_date_end,
+                        'cloud_cover': output_cloud_cover,
+                        'number_median_images': output_number_median_images}
+
+    # close figure window if still open
+    if plt.get_fignums():
+        plt.close()
+
+    output = SDS_tools.merge_output(output)
+
+    # save outputput structure as output.pkl
+    with open(os.path.join(median_dir_path, site_name + '_output_' + sat_name + '.pkl'), 'wb') as f:
+        pickle.dump(output, f)
+
+    printSuccess('shoreline saved')
+    return output
+
+
+def extract_shorelines_optical_PS(metadata, settings):
+
+    inputs = settings['inputs']
+    classes = settings['classes']
+
+    site_name = inputs['site_name']
+    median_dir_path = inputs['median_dir_path']
+    sat_name = inputs['sat_list'][0]
+
+    band_list = settings['bands'][sat_name]
+    first_key = next(iter(band_list))
+    pixel_size = band_list[first_key][1]
+
+    base_file_name = metadata[sat_name]['file_name'][0]
+    date_start = metadata[sat_name]['date_start'][0]
+    date_end = metadata[sat_name]['date_end'][0]
+    number_median_images = metadata[sat_name]['number_median_images'][0]
+
+    filepath_models = os.path.join(os.getcwd(), 'classification', 'models')
+
+    printProgress(f'extracting shorelines ')
+
+    # initialise output structure
+    output = {}
+    # create a subfolder to store the .jpg images showing the detection
+    filepath_jpg = os.path.join(median_dir_path, 'jpg_files', 'detection')
+    if not os.path.exists(filepath_jpg):
+        os.makedirs(filepath_jpg)
+    # close all open figures
+    plt.close('all')
+
+    # initialise the output variables
+    output_shorelines = []  # vector of shoreline points
+    output_filenames = []  # filename of the images from which the shorelines where derived
+    output_date_start = []  # cloud cover of the images
+    output_date_end = []  # georeferencing accuracy of the images
+    output_cloud_cover = []
+    output_number_median_images = []  # index that were kept during the analysis (cloudy images are skipped)
+
+    file_paths = []
+    # load classifier
+    classifier = joblib.load(os.path.join(filepath_models, 'NN_6classes_S2.pkl'))
+
+    for band_key in band_list:
+        file_name = base_file_name + '_' + band_key + '.tif'
+        file_paths.append(os.path.join(median_dir_path, sat_name, band_key, file_name))
+
+    # convert settings['min_beach_area'] from  metres to pixels
+    min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
+
+    # preprocess image (cloud mask + pansharpening/downsampling)
+    image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
+        NOC_preprocess.preprocess_S2(file_paths, sat_name, settings['cloud_mask_issue'])
+    # get image spatial reference system (epsg code) from metadata dict
+    image_epsg = metadata[sat_name]['epsg'][0]
+
+    # compute cloud_cover percentage (with no data pixels)
+    cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
+                                     (cloud_mask.shape[0] * cloud_mask.shape[1]))
+    if cloud_cover_combined > 0.99:  # if 99% of cloudy pixels in image skip
+        return []
+
+    # remove no data pixels from the cloud mask
+    # (for example L7 bands of no data should not be accounted for)
+    cloud_mask_adv = np.logical_xor(cloud_mask, image_nodata)
+    # compute updated cloud cover percentage (without no data pixels)
+    cloud_cover = np.divide(sum(sum(cloud_mask_adv.astype(int))),
+                            (cloud_mask.shape[0] * cloud_mask.shape[1]))
+    # skip image if cloud cover is above user-defined threshold
+    if cloud_cover > settings['cloud_thresh']:
+        return []
+
+    # calculate a buffer around the reference shoreline (if any has been digitised)
+    image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
+                                               pixel_size, settings)
+
     # classify image with NN classifier
     image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
                                                        min_beach_area_pixels, classifier)
@@ -125,123 +244,6 @@ def extract_shorelines_optical(metadata, settings):
 
     # save outputput structure as output.pkl
     with open(os.path.join(median_dir_path, site_name + '_output_' + sat_name + '.pkl'), 'wb') as f:
-        pickle.dump(output, f)
-
-    return output
-
-
-def extract_shorelines_optical_PS(metadata, settings):
-
-    inputs = settings['inputs']
-    site_name = inputs['site_name']
-    classes = settings['classes']
-
-    median_dir_path = inputs['filepath']
-    filepath_models = os.path.join(os.getcwd(), 'classification', 'models')
-
-    # initialise output structure
-    output = {}
-    # create a subfolder to store the .jpg images showing the detection
-    filepath_jpg = os.path.join(median_dir_path, site_name, 'jpg_files', 'detection')
-    if not os.path.exists(filepath_jpg):
-        os.makedirs(filepath_jpg)
-    # close all open figures
-    plt.close('all')
-
-    # loop through satellite list
-    for sat_name in metadata.keys():
-
-        # get images
-        filepath = SDS_tools.get_filepath(inputs, sat_name)
-        file_names = metadata[sat_name]['file_names']
-
-        # initialise the output variables
-        output_timestamp = []  # datetime at which the image was acquired (UTC time)
-        output_shoreline = []  # vector of shoreline points
-        output_filename = []  # filename of the images from which the shorelines where derived
-        output_cloudcover = []  # cloud cover of the images
-        output_geoaccuracy = []  # georeferencing accuracy of the images
-        output_idxkeep = []  # index that were kept during the analysis (cloudy images are skipped)
-        output_median_no = []
-
-        # load classifiers
-        if sat_name in ['L5', 'L7', 'L8']:
-            pixel_size = 15
-            if settings['sand_color'] == 'dark':
-                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_dark.pkl'))
-            elif settings['sand_color'] == 'bright':
-                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_bright.pkl'))
-            else:
-                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat.pkl'))
-
-        elif sat_name == 'S2':
-            pixel_size = 10
-            classifier = joblib.load(os.path.join(filepath_models, 'NN_6classes_S2.pkl'))
-
-        # convert settings['min_beach_area'] from  metres to pixels
-        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
-
-        print(f'{sat_name} extracting shorelines for: {len(file_names)} images')
-        print()
-
-        # loop through the images
-        for file_index in range(len(file_names)):
-
-            # get image filename
-            fn = SDS_tools.get_file_names(file_names[file_index], filepath, sat_name)
-            # preprocess image (cloud mask + pansharpening/downsampling)
-            image_ms, georef = NOC_preprocess.preprocess_S2(fn)
-            # get image spatial reference system (epsg code) from metadata dict
-            image_epsg = metadata[sat_name]['epsg'][file_index]
-
-            cloud_mask = np.zeros((image_ms.shape[:2]), dtype=bool)
-
-            # calculate a buffer around the reference shoreline (if any has been digitised)
-            image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
-                                                       pixel_size, settings)
-
-            # classify image with NN classifier
-            image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
-                                                               min_beach_area_pixels, classifier)
-
-            # find the shoreline interactively
-            date = file_names[file_index][:19]
-            skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
-                                                     image_ref_buffer, image_epsg, georef, settings, date,
-                                                     sat_name)
-            # if the user decides to skip the image, continue and do not save the mapped shoreline
-            if skip_image:
-                continue
-
-            # append to output variables
-            output_timestamp.append(metadata[sat_name]['dates'][file_index])
-            output_shoreline.append(shoreline)
-            output_filename.append(file_names[file_index])
-            output_cloudcover.append(cloud_cover)
-            output_geoaccuracy.append(metadata[sat_name]['acc_georef'][file_index])
-            output_idxkeep.append(file_index)
-            output_median_no.append(metadata[sat_name]['median_no'][file_index])
-
-        # create dictionnary of output
-        output[sat_name] = {
-            'dates': output_timestamp,
-            'shorelines': output_shoreline,
-            'filename': output_filename,
-            'cloud_cover': output_cloudcover,
-            'geoaccuracy': output_geoaccuracy,
-            'idx': output_idxkeep,
-            'median_no': output_median_no
-        }
-
-    # close figure window if still open
-    if plt.get_fignums():
-        plt.close()
-
-    output = SDS_tools.merge_output(output)
-
-    # save outputput structure as output.pkl
-    filepath = os.path.join(median_dir_path, site_name)
-    with open(os.path.join(filepath, site_name + '_output.pkl'), 'wb') as f:
         pickle.dump(output, f)
 
     return output

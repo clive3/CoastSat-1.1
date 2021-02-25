@@ -31,51 +31,73 @@ def get_reference_shoreline_median(inputs):
         return np.zeros(1)
 
 
-def preprocess_S2(filenames):
-    
-    # read NIR image
-    filename_10m = filenames[0]
-    data = gdal.Open(filename_10m, gdal.GA_ReadOnly)
+def preprocess_S2(filname, satname, cloud_mask_issue):
+
+    # read 10m bands (R,G,B,NIR)
+    filname10 = filname[0]
+
+    data = gdal.Open(filname10, gdal.GA_ReadOnly)
+    georef = np.array(data.GetGeoTransform())
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
     image_10m = np.stack(bands, 2)
-    image_10m = image_10m / 10000
-    image_NIR = image_10m[:,:,3]
-    image_ms = image_10m[:, :, [1, 2, 3]]
+    image_10m = image_10m / 10000  # TOA scaled to 10000
 
-    # size of 10m image
-    nrows = image_NIR.shape[0]
-    ncols = image_NIR.shape[1]
-    
-    # read pan image
-    filename_SWIR = filenames[1]
-    data = gdal.Open(filename_SWIR, gdal.GA_ReadOnly)
-    georef = np.array(data.GetGeoTransform())
-    image_SWIR = data.GetRasterBand(1).ReadAsArray()
-    image_SWIR = image_SWIR / 10000
+    print(f'@@@   {image_10m.shape}')
+
+    # if image contains only zeros (can happen with S2), skip the image
+    if sum(sum(sum(image_10m))) < 1:
+        im_ms = []
+        georef = []
+        # skip the image by giving it a full cloud_mask
+        cloud_mask = np.ones((image_10m.shape[0], image_10m.shape[1])).astype('bool')
+        return im_ms, georef, cloud_mask, [], [], []
+
+    # size of 10m bands
+    nrows = image_10m.shape[0]
+    ncols = image_10m.shape[1]
+
+    # read 20m band (SWIR1)
+    filname20 = filname[1]
+    data = gdal.Open(filname20, gdal.GA_ReadOnly)
+    image_20m = data.GetRasterBand(1).ReadAsArray()
+    image_20m = image_20m / 10000  # TOA scaled to 10000
+
+    image_SWIR = np.copy(image_20m)
 
     # resize the SWIR using bi-linear interpolation (order 1)
     image_SWIR = transform.resize(image_SWIR, (nrows, ncols),
                                   order=1, preserve_range=True,
                                   mode='constant')
-
+    
     # pansharpen SWIR
-    image_SWIR_ps = pansharpen_SWIR(image_SWIR, image_ms)
+    image_SWIR_ps = pansharpen_SWIR(image_SWIR, image_10m)
+
+    print(f'@@@   {image_SWIR.shape}')
 
     image_SWIR_ps = np.expand_dims(image_SWIR_ps, axis=2)
 
-    # add pansharpened SWIR band to the other 10m bands
-    image_10m_ps = np.append(image_10m, image_SWIR_ps, axis=2)
+    print(f'@@@   {image_SWIR.shape}')
 
-    return image_10m_ps, georef
+    # add pansharpened SWIR band to the other 10m bands
+    image_10m = np.append(image_10m, image_SWIR_ps, axis=2)
+
+    print(f'@@@   {image_10m.shape}')
+
+    # update cloud mask with all the nodata pixels
+    cloud_mask = np.zeros((nrows, ncols), dtype=bool)
+
+    return image_10m, georef, cloud_mask, image_20m, cloud_mask, cloud_mask
+
 
 
 def pansharpen_SWIR(image_SWIR, image_ms):
-    
+
+    print()
     print(f'@@@ {image_SWIR.shape}')
     print(f'@@@ {image_ms.shape}')
     
     # reshape image into vector
-    image_vec = image_ms.reshape(image_ms.shape[0] * image_ms.shape[1] * image_ms.shape[2])
+    image_vec = image_ms.reshape(image_ms.shape[0] * image_ms.shape[1], image_ms.shape[2])
 
     print(f'@@@ {image_vec.shape}')
 
@@ -90,6 +112,6 @@ def pansharpen_SWIR(image_SWIR, image_ms):
 
     # reshape vector into image
 
-    image_SWIR_ps = vec_SWIR_ps.reshape(image_SWIR.shape[0], image_SWIR.shape[1])
+    image_SWIR_ps = vec_SWIR_ps.reshape(image_SWIR.shape[0], image_SWIR.shape[1], image_ms.shape[2])
 
     return image_SWIR_ps

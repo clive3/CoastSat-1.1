@@ -187,7 +187,8 @@ def retrieve_median_optical(settings):
     with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
         pickle.dump(metadata, f)
 
-    printSuccess('GEE connection closed')
+    printProgress('GEE connection closed')
+    printSuccess('median image retreived')
 
     return metadata
 
