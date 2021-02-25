@@ -290,8 +290,6 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
         mndwi_pixels[class_label] = image_mndwi[image_labels[:, :, class_label-1]]
 
-    image_classified[image_classified == 999] = 0
-
     # create figure
     if plt.get_fignums():
         # if it exists, open the figure
