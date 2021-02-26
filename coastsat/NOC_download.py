@@ -159,6 +159,7 @@ def retrieve_median_optical(settings):
         local_data = filepaths[band_number] + '\data.tif'
         local_file_path = os.path.join(band_file_path, image_file_name)
 
+        print(f'@@@ {band_key} {band_names}')
         get_url_optical(median_image, ee.Number(band_scale), polygon, band_file_path, band_names)
 
         try:
@@ -167,7 +168,6 @@ def retrieve_median_optical(settings):
             os.remove(local_file_path)
             os.rename(local_data, local_file_path)
 
-    printProgress('writing metadata')
     base_file_name = image_file_name.replace('_'+band_key+'.tif', '')
     txt_file_name = base_file_name + '.txt'
 
@@ -182,12 +182,9 @@ def retrieve_median_optical(settings):
             f.write('%s\t%s\n' % (key, metadict[key]))
 
     # once all images have been downloaded, load metadata from .txt files
-    # compile into a merged metadata file and write to disc
+    # compile into a merged metadata file
     metadata = get_median_metadata(inputs)
-    with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
-        pickle.dump(metadata, f)
 
-    printProgress('GEE connection closed')
     printSuccess('median image retreived')
 
     return metadata
@@ -208,6 +205,14 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
     Returns:
         image_median (ee.image.Image)
      """
+
+    bands_list = []
+    bands_dict = settings['bands'][sat_name]
+
+    for band_key in bands_dict.keys():
+        bands_list += bands_dict[band_key][0]
+
+    bands_list = list(set(bands_list))
 
     def LandsatCloudScore(image):
         # Compute a cloud score band.
