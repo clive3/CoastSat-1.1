@@ -69,18 +69,17 @@ def preprocess_single(file_path, satname, cloud_mask_issue, pansharpen=False):
                                       mode='constant')
         image_NIR = image_10[:,:,3]
         image_20m_ps = pansharpen_SWIR(image_20m, image_NIR)
-        image_20 = image_20m_ps[:, :, 5]
+        image_SWIR = image_20m_ps[:, :, 5]
     else:
-        image_20 = image_20[:, :, 5]
-
+        image_SWIR = image_20[:, :, 5]
 
     # resize the image using bilinear interpolation (order 1)
-    image_swir = transform.resize(image_20, (nrows, ncols), order=1, preserve_range=True,
+    image_SWIR = transform.resize(image_SWIR, (nrows, ncols), order=1, preserve_range=True,
                                mode='constant')
-    image_swir = np.expand_dims(image_swir, axis=2)
+    image_SWIR = np.expand_dims(image_SWIR, axis=2)
 
-    # append down-sampled SWIR1 band to the other 10m bands
-    image_ms = np.append(image_10, image_swir, axis=2)
+    # append down-sampled SWIR band to the other 10m bands
+    image_ms = np.append(image_10, image_SWIR, axis=2)
 
     # create cloud mask using 60m QA band (not as good as Landsat cloud cover)
     file_path_60 = file_path[2]
@@ -103,9 +102,9 @@ def preprocess_single(file_path, satname, cloud_mask_issue, pansharpen=False):
     image_zeros = np.ones(image_nodata.shape).astype(bool)
     image_zeros = np.logical_and(np.isin(image_ms[:, :, 1], 0), image_zeros)  # Green
     image_zeros = np.logical_and(np.isin(image_ms[:, :, 3], 0), image_zeros)  # NIR
-    image_20_zeros = transform.resize(np.isin(image_20, 0), (nrows, ncols), order=0,
+    image_SWIR_zeros = transform.resize(np.isin(image_SWIR.flatten(), 0), (nrows, ncols), order=0,
                                    preserve_range=True, mode='constant').astype(bool)
-    image_zeros = np.logical_and(image_20_zeros, image_zeros)  # SWIR1
+    image_zeros = np.logical_and(image_SWIR_zeros, image_zeros)  # SWIR1
     # add to image_nodata
     image_nodata = np.logical_or(image_zeros, image_nodata)
     # dilate if image was merged as there could be issues at the edges

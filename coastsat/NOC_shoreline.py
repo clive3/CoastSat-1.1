@@ -103,7 +103,7 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
     # find the shoreline interactively
     skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
                                              image_ref_buffer, image_epsg, georef, settings,
-                                             date_start, sat_name)
+                                             sat_name)
     # if the user decides to skip the image, continue and do not save the mapped shoreline
     if skip_image:
         return []
@@ -127,7 +127,7 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
     if plt.get_fignums():
         plt.close()
 
-    output = SDS_tools.merge_output(output)
+    output = NOC_tools.merge_output(output)
 
     # save outputput structure as output.pkl
     with open(os.path.join(median_dir_path, site_name + '_output_' + sat_name + '.pkl'), 'wb') as f:
@@ -138,16 +138,14 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
-                     settings, date, sat_name):
+                     settings, sat_name):
 
     inputs = settings['inputs']
     site_name = inputs['site_name']
     date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
     median_dir_path = inputs['median_dir_path']
     reference_threshold = inputs['reference_threshold']
-
-    # subfolder where the .jpg file is stored if the user accepts the shoreline detection
-    filepath = os.path.join(median_dir_path, site_name, 'jpg_files', 'detection')
 
     #  image_classifiery will become filled with labels
     image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
@@ -159,6 +157,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # buffer MNDWI using reference shoreline
     image_mndwi_buffer = np.copy(image_mndwi)
     image_mndwi_buffer[~image_ref_buffer] = np.nan
+
+
+    print(f'@@@ MNDWI min: {np.nanmin(image_mndwi_buffer)}')
+    print(f'@@@ MNDWI max: {np.nanmax(image_mndwi_buffer)}')
 
     # for each class add it to image_classified and
     # extract the MDWI values for all pixels in that class
@@ -238,10 +240,11 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         class_colour = classes[key][1]
         class_pixels = mndwi_pixels[class_label]
 
-        alpha = 0.75
-        if key == 'sand':
-            alpha = 0.5
-        if key in ['hard', 'land_1']:
+        if key in ['white-water', 'sand']:
+            alpha = 0.75
+        elif key in['nature', 'urban', 'water']:
+            alpha = 0.9
+        else:
             alpha = 1.0
 
         if len(class_pixels) > 0:
@@ -265,7 +268,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
-    thresh_label = ax4.text(t_mndwi+binwidth, 6, str(f'{t_mndwi:4.3f}'), rotation=90)
+    thresh_label = ax4.text(t_mndwi+binwidth, 4, str(f'{t_mndwi:4.3f}'), rotation=90)
     if not reference_threshold: reference_threshold = t_mndwi
     ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
 
@@ -353,9 +356,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         else:
             plt.waitforbuttonpress()
 
-    # if save_figure is True, save a .jpg under /jpg_files/detection
+     # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
-        fig.savefig(os.path.join(filepath, date + '_' + sat_name + '.jpg'), dpi=150)
+        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+        fig.savefig(os.path.join(jpeg_file_path, date_start + '_' + date_end + '_' + sat_name + '.jpg'), dpi=150)
 
     # don't close the figure window, but remove all axes and settings, ready for next plot
     for ax in fig.axes:
@@ -508,8 +512,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
 
     site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
-    # subfolder where the .jpg file is stored if the user accepts the shoreline detection
-    filepath = os.path.join(median_dir_path, 'jpg_files', 'detection')
 
     # compute classified image
     if polarisation == 'VV':
@@ -683,7 +685,8 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
 
     # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
-        fig.savefig(os.path.join(filepath, date + '_' + sat_name + '.jpg'), dpi=150)
+        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+        fig.savefig(os.path.join(jpeg_file_path, date + '_' + sat_name + '.jpg'), dpi=150)
 
     # don't close the figure window, but remove all axes and settings, ready for next plot
     for ax in fig.axes:

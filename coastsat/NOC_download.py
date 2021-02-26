@@ -159,7 +159,7 @@ def retrieve_median_optical(settings):
         local_data = filepaths[band_number] + '\data.tif'
         local_file_path = os.path.join(band_file_path, image_file_name)
 
-        print(f'@@@ {band_key} {band_names}')
+        printProgress(f'\t"{band_key}" bands:\t{band_names}')
         get_url_optical(median_image, ee.Number(band_scale), polygon, band_file_path, band_names)
 
         try:
@@ -256,8 +256,6 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
         # List Images in Collection
         image_list = filteredCollection.toList(500)
         image_count = len(image_list.getInfo())
-        print('- Cloud minimal images in Median:')
-        print('   L5: ' + str(image_count))
 
         if settings['add_L7_to_L5'] == True:
 
@@ -282,19 +280,16 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
             # List Images in Collection
             L7_image_list = L7_filteredCollection.toList(500)
             L7_count = len(L7_image_list.getInfo())
-            print('   L7: ' + str(L7_count))
 
             # Merge collection with Landsat 5
             combined_collection = filteredCollection.merge(L7_filteredCollection)
             image_median = combined_collection.median()
             median_number = image_count + L7_count
-            print('   Total: ' + str(image_count + L7_count))
 
         else:
             # Take median of Collection
             image_median = filteredCollection.median()
             median_number = image_count
-            print('   Total: ' + str(image_count))
 
         return image_median, median_number
 
