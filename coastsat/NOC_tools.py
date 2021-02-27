@@ -45,25 +45,21 @@ def polygon_from_kml(fn):
     return [polygon]
 
 
-def output_to_gdf(shorelines, metadata):
+def output_to_gdf(shoreline, metadata):
 
-    gdf_all = None
-    for index, shoreline in enumerate(shorelines):
+    gdf = None
 
-        if len(shoreline) == 0:
-            continue
-        else:
-            geom = geometry.LineString(shoreline)
-            gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(geom))
-            gdf.index = [index]
-            gdf.loc[index, 'sat_name'] = metadata['sat_name']
-            gdf.loc[index, 'date_start'] = metadata['date_start']
-            gdf.loc[index, 'date_end'] = metadata['date_end']
-            gdf.loc[index, 'number_images'] = metadata['number_images']
+    if len(shoreline) == 0:
 
-            if index == 0:
-                gdf_all = gdf
-            else:
-                gdf_all = gdf_all.append(gdf)
+        return gdf
 
-    return gdf_all
+    else:
+
+        geom = geometry.LineString(shoreline)
+        gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(geom))
+        gdf.index = [0]
+        gdf.loc[0, 'date_start'] = metadata['date_start']
+        gdf.loc[0, 'date_end'] = metadata['date_end']
+        gdf.loc[0, 'number_images'] = metadata['number_images']
+
+        return gdf
