@@ -40,7 +40,8 @@ def get_reference_shoreline_median(inputs):
         return np.zeros(1)
 
 
-def preprocess_single(file_path, satname, cloud_mask_issue, pansharpen=False):
+def preprocess_single(file_path, satname, cloud_mask_issue,
+                      pansharpen=False, SWIR_index=5):
 
     # read 10m bands (R,G,B,NIR)
     file_path_10 = file_path[0]
