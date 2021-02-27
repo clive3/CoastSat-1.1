@@ -92,7 +92,7 @@ def load_metadata(settings):
                 band_dict = settings['bands'][sat_name]
 
                 for band_key in band_dict.keys():
-                    file_names.append(file_name + '_' + band_key + '.txt')
+                    file_names.append(file_name + '_' + band_key + '.tif')
 
             metadata['file_names'] = file_names
             metadata['epsg'] = int(metadata_sat['epsg'][file_index])
