@@ -16,16 +16,22 @@ def preprocess_sar(file_name):
 def get_reference_shoreline_median(inputs):
 
     site_name = inputs['site_name']
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
     median_dir_path = inputs['median_dir_path']
 
     # check if reference shoreline already exists in the corresponding folder
-    file_name = site_name + '_reference_shoreline.pkl'
+    ref_shoreline_file_name = site_name + '_reference_shoreline_' +  \
+                                'S' + date_start + '_E' + date_end + '.pkl'
     # if it exist, load it and return it
-    if file_name in os.listdir(median_dir_path):
+    if ref_shoreline_file_name in os.listdir(median_dir_path):
+
+        with open(os.path.join(median_dir_path, ref_shoreline_file_name), 'rb') as f:
+            ref_shoreline = pickle.load(f)
+
         printProgress('reference shoreline loaded')
-        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'rb') as f:
-            refsl = pickle.load(f)
-        return refsl
+        return ref_shoreline
+
     elif not inputs['create_reference_shoreline']:
         printWarning('no reference shoreline found')
         return np.zeros(1)

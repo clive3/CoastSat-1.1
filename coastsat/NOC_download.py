@@ -132,7 +132,7 @@ def retrieve_median_sar(inputs):
     epsg = int(gee_metadata['bands'][0]['crs'][5:])
 
     median_filename = inputs['site_name'] + '_median_' + \
-                       "S" + date_start + "_E" + date_end + '.tif'
+                       'S' + date_start + '_E' + date_end + '.tif'
     download_sar(median_image, ee.Number(pixel_size), inputs['polygon'], sar_dir_path)
 
     # rename the file as the image is downloaded as 'data.tif'
@@ -244,7 +244,7 @@ def retrieve_median_optical(settings):
         local_file_path = os.path.join(band_file_path, image_file_name)
 
         printProgress(f'\t"{band_key}" bands:\t{band_names}')
-        get_url_optical(median_image, ee.Number(band_scale), polygon, band_file_path, band_names)
+        download_optical(median_image, ee.Number(band_scale), polygon, band_file_path, band_names)
 
         try:
             os.rename(local_data, local_file_path)
@@ -269,7 +269,6 @@ def retrieve_median_optical(settings):
     printSuccess('median image retreived')
 
     return metadata_dict
-
 
 def get_median_image_optical(collection, dates, polygon, sat_name, settings):
     """ Selection of median from a collection of images in the Earth Engine library
@@ -932,7 +931,7 @@ def check_training_images_available(inputs):
     return image_dict_T1
 
 
-def get_url_optical(image, scale, polygon, filepath, bands):
+def download_optical(image, scale, polygon, filepath, bands):
     """It will open and download automatically a zip dir containing Geotiff data of 'image'.
     If additional parameters are needed, see also:
     https://github.com/google/earthengine-api/blob/master/python/ee/image.py
@@ -1046,7 +1045,6 @@ def get_S2_SR_cloud_col(aoi, date_start, date_end, CLOUD_FILTER):
             'rightField': 'system:index'
         })
     })), median_number
-
 
 def time_in_range(start, end, x):
     """
