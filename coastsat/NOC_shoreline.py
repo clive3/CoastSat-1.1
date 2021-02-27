@@ -1,7 +1,6 @@
 from scipy.ndimage import gaussian_filter
 
 from coastsat.SDS_shoreline import *
-
 from coastsat import NOC_preprocess, NOC_classify
 
 from utils.print_utils import printProgress, printSuccess, printWarning
@@ -677,7 +676,6 @@ def find_reference_threshold(settings):
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
-
 
 
 def process_sar_shoreline(contours, georef, image_epsg, settings):
