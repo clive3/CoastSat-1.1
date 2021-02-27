@@ -20,7 +20,7 @@ def extract_shoreline_optical(metadata, settings):
     first_key = next(iter(band_dict))
     pixel_size = band_dict[first_key][1]
 
-    base_file_name = metadata[sat_name]['file_name'][0]
+    base_file_name = metadata[sat_name]['file_names'][0]
 
     models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
 

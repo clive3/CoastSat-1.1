@@ -95,7 +95,7 @@ def load_metadata(settings):
                     file_names.append(file_name + '_' + band_key + '.txt')
 
             metadata['file_names'] = file_names
-            metadata['epsg'] = metadata_sat['epsg'][file_index]
+            metadata['epsg'] = int(metadata_sat['epsg'][file_index])
             metadata['date_start'] = date_start
             metadata['date_end'] = date_end
             metadata['number_images'] = metadata_sat['number_images'][file_index]
