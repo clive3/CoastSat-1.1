@@ -2,11 +2,14 @@ from coastsat.SDS_download import *
 from utils.print_utils import printProgress, printError, printSuccess
 
 
-def save_metadata(inputs):
+def save_metadata(settings):
 
-    # directory containing the images
+    inputs = settings['inputs']
+
     sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
+    band_dict = settings['bands'][sat_name]
 
     # initialize metadata dict
     metadata = {}
@@ -27,6 +30,7 @@ def save_metadata(inputs):
             object_names = os.listdir(meta_dir_path)
         else:
             object_names = os.listdir(images_dir_path)
+            meta_dir_path = images_dir_path
 
         text_files = [file_name for file_name in object_names if file_name[-4:] == '.txt']
 
@@ -34,7 +38,7 @@ def save_metadata(inputs):
         for image_meta in text_files:
 
             # read them and extract the metadata info
-            with open(os.path.join(images_dir_path, image_meta), 'r') as f:
+            with open(os.path.join(meta_dir_path, image_meta), 'r') as f:
 
                 filename = f.readline().split('\t')[1].replace('\n','')
                 epsg = int(f.readline().split('\t')[1].replace('\n',''))
@@ -50,7 +54,7 @@ def save_metadata(inputs):
             metadata[sat_name]['number_images'].append(number_images)
 
     # save a .pkl file containing the metadata dict
-    with open(os.path.join(median_dir_path, inputs['site_name'] + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
+    with open(os.path.join(median_dir_path,  site_name + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
         pickle.dump(metadata, f)
 
     printProgress('metadata saved')
@@ -58,9 +62,10 @@ def save_metadata(inputs):
     return metadata
 
 
-def load_metadata(inputs):
+def load_metadata(settings):
 
-    # directory containing the images
+    inputs = settings['inputs']
+
     sat_name = inputs['sat_name']
     median_dir_path = inputs['median_dir_path']
     date_start = inputs['dates'][0]
@@ -79,7 +84,17 @@ def load_metadata(inputs):
         if date_start == metadata_sat['date_start'][file_index] and \
              date_end == metadata_sat['date_end'][file_index]:
 
-            metadata['file_name'] = file_name
+            file_names = []
+
+            if sat_name == 'S1':
+                file_names.append(file_name)
+            else:
+                band_dict = settings['bands'][sat_name]
+
+                for band_key in band_dict.keys():
+                    file_names.append(file_name + '_' + band_key + '.txt')
+
+            metadata['file_names'] = file_names
             metadata['epsg'] = metadata_sat['epsg'][file_index]
             metadata['date_start'] = date_start
             metadata['date_end'] = date_end
@@ -124,7 +139,6 @@ def retrieve_median_sar(inputs):
     number_images = len(median_images_list.getInfo())
 
     printProgress(f'found {number_images} images')
-    printProgress('calculating median image')
 
     median_image = median_images_collection.median()
 
@@ -200,30 +214,29 @@ def retrieve_median_optical(settings):
                                                    settings)
 
     printProgress(f'found {number_images} images')
-    printProgress('calculating median image')
 
     image_metadata = median_image.getInfo()
     image_epsg = image_metadata['bands'][0]['crs'][5:]
 
     all_names = []
     for band_key in band_list.keys():
-        image_filename[band_key] = sat_name + '_' + site_name + '_median_' +\
+        image_filename[band_key] = site_name + '_median_' +\
                               "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
 
     # if two images taken at the same date add 'dup' to the name (duplicate)
     if any(image_filename[band_key] in _ for _ in all_names):
         for band_key in band_list.keys():
-            image_filename[band_key] = sat_name + '_' + site_name + '_median_dup_' +\
+            image_filename[band_key] = site_name + '_median_dup_' +\
                               "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
 
         # also check for triplicates (only on S2 imagery) and add 'tri' to the name
         if image_filename[band_key] in all_names:
             for band_key in band_list.keys():
-                image_filename[band_key] = sat_name + '_' + site_name + '_median_tri_' +\
+                image_filename[band_key] = site_name + '_median_tri_' +\
                               "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
     all_names.append(image_filename[band_key])
 
-    printProgress('downloading median image')
+    printProgress('downloading median for bands')
 
     if sat_name[0] == 'L' and settings['coregistration'] == True:
 
@@ -270,6 +283,7 @@ def retrieve_median_optical(settings):
     printSuccess('median image retreived')
 
     return metadata_dict
+
 
 def get_median_image_optical(collection, dates, polygon, sat_name, settings):
     """ Selection of median from a collection of images in the Earth Engine library
@@ -971,7 +985,6 @@ def download_sar(image, scale, region, filepath):
     local_zip, headers = urlretrieve(path)
     with zipfile.ZipFile(local_zip) as local_zipfile:
         return local_zipfile.extractall(path=str(filepath))
-
 
 
 def get_S2_SR_cloud_col(aoi, date_start, date_end, CLOUD_FILTER):

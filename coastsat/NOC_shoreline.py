@@ -6,7 +6,7 @@ from coastsat import NOC_preprocess, NOC_classify
 from utils.print_utils import printProgress, printSuccess, printWarning
 
 
-def extract_shoreline_optical(metadata, settings, pansharpen=False):
+def extract_shoreline_optical(metadata, settings):
 
     inputs = settings['inputs']
     classes = settings['classes']
@@ -14,10 +14,11 @@ def extract_shoreline_optical(metadata, settings, pansharpen=False):
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
+    pansharpen = inputs['pansharpen']
 
-    band_list = settings['bands'][sat_name]
-    first_key = next(iter(band_list))
-    pixel_size = band_list[first_key][1]
+    band_dict = settings['bands'][sat_name]
+    first_key = next(iter(band_dict))
+    pixel_size = band_dict[first_key][1]
 
     base_file_name = metadata[sat_name]['file_name'][0]
 
@@ -45,7 +46,7 @@ def extract_shoreline_optical(metadata, settings, pansharpen=False):
     elif sat_name == 'S2':
         classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
 
-    for band_key in band_list:
+    for band_key in band_dict:
         file_name = base_file_name + '_' + band_key + '.tif'
         file_paths.append(os.path.join(median_dir_path, sat_name, band_key, file_name))
 
@@ -82,7 +83,7 @@ def extract_shoreline_optical(metadata, settings, pansharpen=False):
 
     printProgress('classifying image')
     # classify image with NN classifier
-    image_classifier, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
+    _, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
                                                        min_beach_area_pixels, classifier)
 
     printProgress('select threshold')
@@ -385,7 +386,7 @@ def extract_shoreline_sar(metadata, settings):
     date_end = inputs['dates'][1]
     pixel_size = inputs['pixel_size']
 
-    file_name = metadata['file_name']
+    file_name = metadata['file_name'][0]
 
     # create a folder to store the .jpg images showing the detection
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
@@ -568,54 +569,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
             ax4.set_title('sigma0 pixel intensities and threshold')
             break
 
-    """
-    # set a key event to accept/reject the detections (see https://stackoverflow.com/a/15033071)
-    # this variable needs to be immuatable so we can access it after the keypress event
-    key_event = {}
-
-    def press(event):
-        # store what key was pressed in the dictionary
-        key_event['pressed'] = event.key
-
-    # let the user press a key, right arrow to keep the image, left arrow to skip it
-    # to break the loop the user can press 'escape'
-    while True:
-        btn_keep = plt.text(1.1, 0.9, 'keep ⇨', size=12, ha="right", va="top",
-                            transform=ax1.transAxes,
-                            bbox=dict(boxstyle="square", ec='k', fc='w'))
-        btn_skip = plt.text(-0.1, 0.9, '⇦ skip', size=12, ha="left", va="top",
-                            transform=ax1.transAxes,
-                            bbox=dict(boxstyle="square", ec='k', fc='w'))
-        btn_esc = plt.text(0.5, 0, '<esc> to quit', size=12, ha="center", va="top",
-                           transform=ax1.transAxes,
-                           bbox=dict(boxstyle="square", ec='k', fc='w'))
-        plt.draw()
-        fig.canvas.mpl_connect('key_press_event', press)
-        plt.waitforbuttonpress()
-        # after button is pressed, remove the buttons
-        btn_skip.remove()
-        btn_keep.remove()
-        btn_esc.remove()
-
-        # keep/skip image according to the pressed key, 'escape' to break the loop
-        if key_event.get('pressed') == 'right':
-            skip_image = False
-            break
-        elif key_event.get('pressed') == 'left':
-            skip_image = True
-            break
-        elif key_event.get('pressed') == 'escape':
-            plt.close()
-            raise StopIteration('User cancelled checking shoreline detection')
-        else:
-            plt.waitforbuttonpress()
-
-    # if save_figure is True, save a .jpg under /jpg_files/detection
-    if not skip_image:
-        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-        fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start +\
-                                                            '_E' + data_end +'.jpg'), dpi=150)"""
-
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
     fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
@@ -631,6 +584,18 @@ def find_reference_threshold(settings):
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
 
+    classes = settings['classes']
+    band_dict = settings['bands'][sat_name]
+    first_key = next(iter(band_dict))
+    pixel_size = band_dict[first_key][1]
+
+    cloud_mask_issue = settings['cloud_mask_issue']
+
+    models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
+    classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
+
+    min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
+
     with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
         metadata_dict = pickle.load(f)
 
@@ -640,38 +605,62 @@ def find_reference_threshold(settings):
 
     printProgress('file_names loaded')
 
-    # create a folder to store the .jpg images showing the detection
-    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-    if not os.path.exists(jpeg_file_path):
-        os.makedirs(jpeg_file_path)
-
-    printProgress('finding reference threshold')
+    printProgress('displaying reference histogram')
 
     # close all open figures
     plt.close('all')
 
     for file_index, file_name in enumerate(file_names):
 
-        file_path = os.path.join(median_dir_path, sat_name, file_name)
+        if sat_name == 'S1':
 
-        if file_index == 0:
-            full_image, georef = NOC_preprocess.preprocess_sar(file_path)
-            full_image = np.expand_dims(full_image, axis=3)
+            file_path = os.path.join(median_dir_path, sat_name, file_name)
+
+            if file_index == 0:
+                full_image, georef = NOC_preprocess.preprocess_sar(file_path)
+                full_image = np.expand_dims(full_image, axis=3)
+
+            else:
+                sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
+                sar_image = np.expand_dims(sar_image, axis=3)
+                full_image = np.append(full_image, sar_image, axis=3)
 
         else:
-            sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
-            sar_image = np.expand_dims(sar_image, axis=3)
-            full_image = np.append(full_image, sar_image, axis=3)
+
+            file_paths = []
+
+            for band_key in band_dict:
+                file_paths.append(os.path.join(median_dir_path, sat_name,
+                                               band_key, file_name + '_' + band_key + '.tif'))
+
+            if file_index == 0:
+                full_image, georef, cloud_mask, image_extra, image_QA, image_nodata = \
+                    SDS_preprocess.preprocess_single(file_paths, sat_name, cloud_mask_issue)
+                full_image = np.expand_dims(full_image, axis=3)
+
+            else:
+                optical_image, georef, cloud_mask, image_extra, image_QA, image_nodata = \
+                    SDS_preprocess.preprocess_single(file_paths, sat_name, cloud_mask_issue)
+                optical_image = np.expand_dims(optical_image, axis=3)
+                full_image = np.append(full_image, optical_image, axis=3)
 
     full_image = np.median(full_image, axis=3)
 
-    buffer_shape = (full_image.shape[0], full_image.shape[1])
     # calculate a buffer around the reference shoreline if it has already been generated
-
+    buffer_shape = (full_image.shape[0], full_image.shape[1])
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
-    shoreline = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
-                                      georef, settings)
+    if sat_name == 'S1':
+        shoreline = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
+                                         georef, settings)
+    else:
+
+        _, image_labels = NOC_classify.classify_image_NN(full_image, classes, cloud_mask,
+                                                         min_beach_area_pixels, classifier)
+
+        shoreline = adjust_detection_optical(full_image, cloud_mask, image_labels,
+                                             image_ref_buffer, image_epsg, georef,
+                                             settings, sat_name)
 
     # close figure window if still open
     if plt.get_fignums():

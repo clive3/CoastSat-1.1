@@ -15,6 +15,7 @@ def preprocess_sar(file_name):
 
 def get_reference_shoreline_median(inputs):
 
+    sat_name = inputs['sat_name']
     site_name = inputs['site_name']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
@@ -31,8 +32,10 @@ def get_reference_shoreline_median(inputs):
 
         printProgress('reference shoreline loaded')
         return ref_shoreline
-
-    elif not inputs['create_reference_shoreline']:
+    elif sat_name != 'S1':
+        printWarning(f'cannot find: {ref_shoreline_file_name}')
+        return np.zeros(1)
+    else:
         printWarning('no reference shoreline found')
         return np.zeros(1)
 
@@ -62,6 +65,7 @@ def preprocess_single(file_path, satname, cloud_mask_issue, pansharpen=False):
 
     # read 20m band (SWIR1)
     file_path_20 = file_path[1]
+
     data = gdal.Open(file_path_20, gdal.GA_ReadOnly)
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
     image_20 = np.stack(bands, 2)
@@ -89,6 +93,7 @@ def preprocess_single(file_path, satname, cloud_mask_issue, pansharpen=False):
 
     # create cloud mask using 60m QA band (not as good as Landsat cloud cover)
     file_path_60 = file_path[2]
+
     data = gdal.Open(file_path_60, gdal.GA_ReadOnly)
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
     image_60 = np.stack(bands, 2)

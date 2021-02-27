@@ -457,29 +457,17 @@ def pansharpen(im_ms, im_pan, cloud_mask):
     vec_pan = im_pan.reshape(im_pan.shape[0] * im_pan.shape[1])
     vec_pan = vec_pan[~vec_mask]
 
-    print(f'@@@ im_ms {im_ms.shape}')
-    print(f'@@@ im_pan {im_pan.shape}')
-    print(f'@@@ vec_im {vec_im.shape}')
-    print(f'@@@ vec_pan {vec_pan.shape}')
-
     # apply PCA to multispectral bands
     pca = decomposition.PCA()
     vec_pca = pca.fit_transform(vec_im)
 
-    print(f'@@@ vec_pca {vec_im.shape}')
-
-
     vec_pca[:,0] = hist_match(vec_pan, vec_pca[:,0])
     vec_ms_ps = pca.inverse_transform(vec_pca)
-
-    print(f'@@@ vec_ms_ps {vec_ms_ps.shape}')
 
     # reshape vector into image
     vec_ms_ps_full = np.ones((len(vec_mask), im_ms.shape[2])) * np.nan
     vec_ms_ps_full[~vec_mask,:] = vec_ms_ps
-    print(f'@@@ vec_ms_ps_full {vec_ms_ps_full.shape}')
     im_ms_ps = vec_ms_ps_full.reshape(im_ms.shape[0], im_ms.shape[1], im_ms.shape[2])
-    print(f'@@@ im_ms_ps {im_ms_ps.shape}')
 
     return im_ms_ps
 
