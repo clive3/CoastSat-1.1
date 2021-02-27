@@ -590,7 +590,9 @@ def find_reference_threshold(settings):
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
 
-    if sat_name == 'S1'
+    models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
+
+    if sat_name == 'S1':
         pixel_size = inputs['pixel_size']
     else:
         classes = settings['classes']
@@ -598,10 +600,9 @@ def find_reference_threshold(settings):
         first_key = next(iter(band_dict))
         pixel_size = band_dict[first_key][1]
 
-    cloud_mask_issue = settings['cloud_mask_issue']
+        cloud_mask_issue = settings['cloud_mask_issue']
 
-    models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
-    classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
+        classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
 
     min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
 
