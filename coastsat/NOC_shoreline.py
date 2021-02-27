@@ -599,12 +599,9 @@ def find_reference_threshold(settings):
         band_dict = settings['bands'][sat_name]
         first_key = next(iter(band_dict))
         pixel_size = band_dict[first_key][1]
-
         cloud_mask_issue = settings['cloud_mask_issue']
-
         classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
-
-    min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
+        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
 
     with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
         metadata_dict = pickle.load(f)
