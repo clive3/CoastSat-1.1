@@ -180,7 +180,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     ax2.imshow(image_class)
     ax2.axis('off')
 
-    ax2.set_title(date_start, fontweight='bold', fontsize=16)
+    ax2.set_title(date_start + ' to ' +date_end, fontweight='bold', fontsize=12)
 
     # plot image 3 (MNDWI)
     ax3.imshow(image_mndwi, cmap='bwr')
