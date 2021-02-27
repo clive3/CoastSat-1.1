@@ -2,7 +2,7 @@ from scipy.ndimage import gaussian_filter
 
 from coastsat.SDS_shoreline import *
 
-from coastsat import NOC_preprocess, NOC_tools, NOC_classify
+from coastsat import NOC_preprocess, NOC_classify
 
 from utils.print_utils import printProgress, printSuccess, printWarning
 
@@ -12,7 +12,6 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
     inputs = settings['inputs']
     classes = settings['classes']
 
-    site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_list'][0]
 
@@ -21,43 +20,30 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
     pixel_size = band_list[first_key][1]
 
     base_file_name = metadata[sat_name]['file_name'][0]
-    date_start = metadata[sat_name]['date_start'][0]
-    date_end = metadata[sat_name]['date_end'][0]
-    number_median_images = metadata[sat_name]['number_median_images'][0]
 
-    filepath_models = os.path.join(os.getcwd(), 'classification', 'models')
+    models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
 
     printProgress(f'extracting shorelines ')
 
-    # initialise output structure
-    output = {}
     # create a subfolder to store the .jpg images showing the detection
-    filepath_jpg = os.path.join(median_dir_path, 'jpg_files', 'detection')
-    if not os.path.exists(filepath_jpg):
-        os.makedirs(filepath_jpg)
+    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+    if not os.path.exists(jpeg_file_path):
+        os.makedirs(jpeg_file_path)
     # close all open figures
     plt.close('all')
-
-    # initialise the output variables
-    output_shorelines = []  # vector of shoreline points
-    output_filenames = []  # filename of the images from which the shorelines where derived
-    output_date_start = []  # cloud cover of the images
-    output_date_end = []  # georeferencing accuracy of the images
-    output_cloud_cover = []
-    output_number_median_images = []  # index that were kept during the analysis (cloudy images are skipped)
 
     file_paths = []
     # load classifier
     if sat_name in ['L5', 'L7', 'L8']:
 #            if settings['sand_color'] == 'dark':
-#                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_dark.pkl'))
+#                classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat_dark.pkl'))
 #            elif settings['sand_color'] == 'bright':
-#                classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat_bright.pkl'))
+#                classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat_bright.pkl'))
 #            else:
-        classifier = joblib.load(os.path.join(filepath_models, 'NN_4classes_Landsat.pkl'))
+        classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat.pkl'))
 
     elif sat_name == 'S2':
-        classifier = joblib.load(os.path.join(filepath_models, 'NN_6classes_S2.pkl'))
+        classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
 
     for band_key in band_list:
         file_name = base_file_name + '_' + band_key + '.tif'
@@ -101,40 +87,12 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
 
     printProgress('select threshold')
     # find the shoreline interactively
-    skip_image, shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels,
-                                             image_ref_buffer, image_epsg, georef, settings,
-                                             sat_name)
-    # if the user decides to skip the image, continue and do not save the mapped shoreline
-    if skip_image:
-        return []
+    shorelines = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
+                                          image_epsg, georef, settings, sat_name)
 
-    # append to output variables
-    output_shorelines.append(shoreline)
-    output_filenames.append(file_name)
-    output_date_start.append(date_start)
-    output_date_end.append(date_end)
-    output_cloud_cover.append(cloud_cover)
-    output_number_median_images.append(number_median_images)
-
-    output[sat_name] = {'file_names': output_filenames,
-                        'shorelines': output_shorelines,
-                        'date_start': output_date_start,
-                        'date_end': output_date_end,
-                        'cloud_cover': output_cloud_cover,
-                        'number_median_images': output_number_median_images}
-
-    # close figure window if still open
-    if plt.get_fignums():
-        plt.close()
-
-    output = NOC_tools.merge_output(output)
-
-    # save outputput structure as output.pkl
-    with open(os.path.join(median_dir_path, site_name + '_output_' + sat_name + '.pkl'), 'wb') as f:
-        pickle.dump(output, f)
-
-    printSuccess('shoreline saved')
-    return output
+    printProgress('shoreline extracted')
+    
+    return shorelines
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
@@ -215,13 +173,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # plot image 2 (classification)
     ax2.imshow(image_class)
     ax2.axis('off')
-    """"
-    patches = [mpatches.Patch(color=[1,1,1], label='unclassified')]
-    for key in class_keys:
-        class_colour = classes[key][1]
-        patches.append(mpatches.Patch(color=class_colour, label=key))
-    patches.append(mlines.Line2D([],[],color='k',linestyle='-', label='shoreline'))
-    ax2.legend(handles=patches, bbox_to_anchor=(1, 0.5), fontsize=10)"""
+
     ax2.set_title(date_start, fontweight='bold', fontsize=16)
 
     # plot image 3 (MNDWI)
@@ -230,7 +182,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     ax3.set_title('MNDWI', fontweight='bold', fontsize=16)
 
     # plot histogram of MNDWI values
-    binwidth = 0.01
+    bin_width = 0.01
     ax4.set_facecolor('0.75')
     ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
     ax4.set(ylabel='pixels', yticklabels=[], xlim=[-1, 1])
@@ -248,7 +200,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
             alpha = 1.0
 
         if len(class_pixels) > 0:
-            bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + binwidth, binwidth)
+            bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
             ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
 
     # use classification to refine threshold and extract the sand/water interface
@@ -268,7 +220,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
-    thresh_label = ax4.text(t_mndwi+binwidth, 4, str(f'{t_mndwi:4.3f}'), rotation=90)
+    thresh_label = ax4.text(t_mndwi+bin_width, 4, str(f'{t_mndwi:4.3f}'), rotation=90)
     if not reference_threshold: reference_threshold = t_mndwi
     ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
 
@@ -289,13 +241,13 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
             # update the plot
             t_line.set_xdata([t_mndwi, t_mndwi])
-            thresh_label.set(x=t_mndwi+binwidth, text=str(f'{t_mndwi:4.3f}'))
+            thresh_label.set(x=t_mndwi+bin_width, text=str(f'{t_mndwi:4.3f}'))
             # map contours with new threshold
             contours = measure.find_contours(image_mndwi_buffer, level=t_mndwi,  mask=image_ref_buffer)
             # remove contours that contain NaNs (due to cloud pixels in the contour)
             contours = process_contours(contours)
             # process the water contours into a shoreline
-            shoreline = process_shoreline(contours, cloud_mask, georef, image_epsg, settings)
+            shorelines = process_shoreline(contours, cloud_mask, georef, image_epsg, settings)
             # convert shoreline to pixels
             if len(shoreline) > 0:
                 sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
@@ -313,8 +265,6 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
             ax4.set_title('MNDWI pixel intensities and threshold')
             break
 
-    # let user manually accept/reject the image
-    skip_image = False
     # set a key event to accept/reject the detections (see https://stackoverflow.com/a/15033071)
     # this variable needs to be immuatable so we can access it after the keypress event
     key_event = {}
@@ -356,16 +306,16 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         else:
             plt.waitforbuttonpress()
 
+    plt.close()
+    
      # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
         fig.savefig(os.path.join(jpeg_file_path, date_start + '_' + date_end + '_' + sat_name + '.jpg'), dpi=150)
 
-    # don't close the figure window, but remove all axes and settings, ready for next plot
-    for ax in fig.axes:
-        ax.clear()
+    printProgress('shoreline extracted')
 
-    return skip_image, shoreline
+    return shorelines
 
 
 def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
@@ -419,95 +369,59 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     return contours_mwi, t_mwi
 
 
-
 def extract_shorelines_sar(metadata, settings):
 
     inputs = settings['inputs']
 
-    site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
-    sat_name = inputs['sat_list'][0]
+    sat_name = inputs['sat_name']
     pixel_size = inputs['pixel_size']
 
-    number_median_images = metadata[sat_name]['number_median_images'][0]
-    date_start = metadata[sat_name]['date_start'][0]
-    date_end = metadata[sat_name]['date_end'][0]
-    file_name = metadata[sat_name]['file_name'][0]
-    image_epsg = metadata[sat_name]['epsg'][0]
+    file_name = metadata['file_name']
 
-    file_path = os.path.join(median_dir_path, sat_name, file_name)
-
-    # initialise output structure
-    output = {}
-    # create a subfolder to store the .jpg images showing the detection
-    filepath_jpg = os.path.join(median_dir_path, 'jpg_files', 'detection')
-    if not os.path.exists(filepath_jpg):
-        os.makedirs(filepath_jpg)
-    # close all open figures
-    plt.close('all')
+    # create a folder to store the .jpg images showing the detection
+    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+    if not os.path.exists(jpeg_file_path):
+        os.makedirs(jpeg_file_path)
 
     printProgress('mapping shorelines')
 
-    # initialise the output variables
-    output_shorelines = []  # vector of shoreline points
-    output_filenames = []  # filename of the images from which the shorelines where derived
-    output_date_start = []  # cloud cover of the images
-    output_date_end = []  # georeferencing accuracy of the images
-    output_number_median_images = []  # index that were kept during the analysis (cloudy images are skipped)
+    image_epsg = metadata['epsg']
+    file_path = os.path.join(median_dir_path, sat_name, file_name)
+
+    # close all open figures
+    plt.close('all')
 
     ## read the geotiff
     sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
 
     buffer_shape = (sar_image.shape[0], sar_image.shape[1])
     # calculate a buffer around the reference shoreline if it has already been generated
-    if settings['reference_shoreline'].any():
+    if inputs['create_reference_shoreline']:
+        image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
+    else:
         image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                 pixel_size, settings)
-    else:
-        image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
-    skip_image, shoreline = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
-                                                 settings, date_start,  sat_name)
-
-    if skip_image:
-        return []
-
-    ## create the the output
-    output_filenames.append(file_name)
-    output_shorelines.append(shoreline)
-    output_date_start.append(date_start)
-    output_date_end.append(date_end)
-    output_number_median_images.append(number_median_images)
-
-    printProgress('saving output file')
-    # create dictionnary of output
-    output[sat_name] = {'file_names': output_filenames,
-                        'shorelines': output_shorelines,
-                        'date_start': output_date_start,
-                        'date_end': output_date_end,
-                        'number_median_images': output_number_median_images}
-
-
-    # change the format to have one list sorted by date with all the shorelines (easier to use)
-    output = NOC_tools.merge_output_median(output)
-
-    # save output structure as @@@_output_S1.pkl
-    with open(os.path.join(median_dir_path, site_name + '_output_S1.pkl'), 'wb') as f:
-        pickle.dump(output, f)
+    shorelines = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg,
+                                      georef, settings)
 
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
 
-    return output
+    printSuccess('shoreline extracted')
+
+    return shorelines
 
 
-def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
-                     settings, date, sat_name):
+def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settings):
 
     inputs = settings['inputs']
+    sat_name = inputs['sat_name']
     polarisation = inputs['polarisation']
-    start_date = inputs['dates'][0]
+    date_start = inputs['dates'][0]
+    data_end = inputs['dates'][1]
     reference_threshold = inputs['reference_threshold']
 
     site_name = inputs['site_name']
@@ -516,10 +430,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # compute classified image
     if polarisation == 'VV':
         image_pol = np.copy(sar_image[:,:,0])
-        colour = [1, 0, 1, 1]
+        colour = [1, 0, 1]
     else:
         image_pol = np.copy(sar_image[:,:,1])
-        colour = [1, 1, 0, 1]
+        colour = [0, 1, 1]
 
     if inputs['create_reference_shoreline']:
         image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
@@ -561,7 +475,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # plot image 1 (grey)
     ax2.imshow(image_pol, cmap='gray')
     ax2.axis('off')
-    ax2.set_title(start_date, fontweight='bold', fontsize=16)
+    ax2.set_title(date_start + ' to ' + data_end, fontweight='bold', fontsize=16)
 
     # plot image 3 (blue/red)
     ax3.imshow(image_pol, cmap='bwr')
@@ -573,8 +487,8 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
     ax4.set(ylabel='pixels', yticklabels=[], xlim=[np.nanmin(sar_image), np.nanmax(sar_image)])
 
-    binwidth = 0.1
-    bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + binwidth, binwidth)
+    bin_width = 0.1
+    bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + bin_width, bin_width)
     ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
     t_sar = filters.threshold_otsu(image_pol)
@@ -598,7 +512,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'r', markersize=3)
 
     t_line = ax4.axvline(x=t_sar, ls='--', c='k', lw=1.5, label='threshold')
-    thresh_label = ax4.text(t_sar + binwidth, 0.25, str(f'{t_sar:4.2f}'), rotation=90)
+    thresh_label = ax4.text(t_sar + bin_width, 0.25, str(f'{t_sar:4.2f}'), rotation=90)
     if not reference_threshold: reference_threshold = t_sar
     ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.2f}')
 
@@ -618,7 +532,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
 
             # update the plot
             t_line.set_xdata([t_sar, t_sar])
-            thresh_label.set(x=t_sar + binwidth, text=str(f'{t_sar:4.2f}'))
+            thresh_label.set(x=t_sar + bin_width, text=str(f'{t_sar:4.2f}'))
             # map contours with new threshold
             contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
             # process the water contours into a shoreline
@@ -640,8 +554,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
             ax4.set_title('sigma0 pixel intensities and threshold')
             break
 
-    # let user manually accept/reject the image
-    skip_image = False
+    """
     # set a key event to accept/reject the detections (see https://stackoverflow.com/a/15033071)
     # this variable needs to be immuatable so we can access it after the keypress event
     key_event = {}
@@ -686,17 +599,21 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef,
     # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-        fig.savefig(os.path.join(jpeg_file_path, date + '_' + sat_name + '.jpg'), dpi=150)
+        fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start +\
+                                                            '_E' + data_end +'.jpg'), dpi=150)"""
 
-    # don't close the figure window, but remove all axes and settings, ready for next plot
-    for ax in fig.axes:
-        ax.clear()
+    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+    fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start + \
+                             '_E' + data_end + '.jpg'), dpi=150)
+
+    plt.close()
 
     if inputs['create_reference_shoreline']:
+        printProgress('saving reference shoreline')
         with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(shorelines, f)
 
-    return skip_image, shorelines
+    return shorelines
 
 
 def process_sar_shoreline(contours, georef, image_epsg, settings):

@@ -26,7 +26,7 @@ def get_reference_shoreline_median(inputs):
         with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'rb') as f:
             refsl = pickle.load(f)
         return refsl
-    else:
+    elif not inputs['create_reference_shoreline']:
         printWarning('no reference shoreline found')
         return np.zeros(1)
 

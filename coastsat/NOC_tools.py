@@ -45,50 +45,25 @@ def polygon_from_kml(fn):
     return [polygon]
 
 
-def output_to_gdf_median(output):
+def output_to_gdf(shorelines, metadata):
 
-    # loop through the mapped shorelines
     gdf_all = None
-    for index, shoreline in enumerate(output['shorelines']):
-        # skip if there shoreline is empty
+    for index, shoreline in enumerate(shorelines):
+
         if len(shoreline) == 0:
             continue
         else:
             geom = geometry.LineString(shoreline)
             gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(geom))
             gdf.index = [index]
+            gdf.loc[index, 'sat_name'] = metadata['sat_name']
             gdf.loc[index, 'date_start'] = output['date_start']
             gdf.loc[index, 'date_end'] = output['date_end']
-            gdf.loc[index, 'sat_name'] = output['sat_name']
-            gdf.loc[index, 'number_median_images'] = output['number_median_images']
+            gdf.loc[index, 'number_images'] = output['number_images']
 
-            # store into geodataframe
             if index == 0:
                 gdf_all = gdf
             else:
                 gdf_all = gdf_all.append(gdf)
 
     return gdf_all
-
-
-def merge_output_median(output):
-
-    # initialize output dict
-    output_all = dict([])
-    sat_names = list(output.keys())
-    for key in output[sat_names[0]].keys():
-        output_all[key] = []
-    # create extra key for the satellite name
-    output_all['sat_name'] = []
-    # fill the output dict
-    for sat_name in list(output.keys()):
-        for key in output[sat_names[0]].keys():
-            output_all[key] = output_all[key] + output[sat_name][key]
-        output_all['sat_name'] = output_all['sat_name'] + [_ for _ in np.tile(sat_name,
-                                                                            len(output[sat_name]['date_start']))]
-    # sort chronologically
-    idx_sorted = sorted(range(len(output_all['date_start'])), key=output_all['date_start'].__getitem__)
-    for key in output_all.keys():
-        output_all[key] = [output_all[key][i] for i in idx_sorted]
-
-    return output_all
