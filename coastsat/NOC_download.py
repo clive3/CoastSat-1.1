@@ -91,6 +91,7 @@ def load_metadata(inputs):
 
     return metadata
 
+
 def retrieve_median_sar(inputs):
 
     pixel_size = inputs['pixel_size']

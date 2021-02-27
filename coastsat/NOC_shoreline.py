@@ -624,6 +624,62 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     return shoreline
 
 
+def find_reference_threshold(settings):
+
+    inputs = settings['inputs']
+
+    median_dir_path = inputs['median_dir_path']
+    sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
+
+    with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
+        metadata_dict = pickle.load(f)
+
+    metadata_sat = metadata_dict[sat_name]
+    file_names = metadata_sat['file_names']
+    image_epsg = metadata_sat['epsg'][0]
+
+    printProgress('file_names loaded')
+
+    # create a folder to store the .jpg images showing the detection
+    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+    if not os.path.exists(jpeg_file_path):
+        os.makedirs(jpeg_file_path)
+
+    printProgress('finding reference threshold')
+
+    # close all open figures
+    plt.close('all')
+
+    for file_index, file_name in enumerate(file_names):
+
+        file_path = os.path.join(median_dir_path, sat_name, file_name)
+
+        if file_index == 0:
+            full_image, georef = NOC_preprocess.preprocess_sar(file_path)
+            full_image = np.expand_dims(full_image, axis=3)
+
+        else:
+            sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
+            sar_image = np.expand_dims(sar_image, axis=3)
+            full_image = np.append(full_image, sar_image, axis=3)
+
+    full_image = np.median(full_image, axis=3)
+
+    buffer_shape = (full_image.shape[0], full_image.shape[1])
+    # calculate a buffer around the reference shoreline if it has already been generated
+
+    image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
+
+    shoreline = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
+                                      georef, settings)
+
+    # close figure window if still open
+    if plt.get_fignums():
+        plt.close()
+
+
+
 def process_sar_shoreline(contours, georef, image_epsg, settings):
 
     # convert pixel coordinates to world coordinates
