@@ -2,109 +2,6 @@ from coastsat.SDS_download import *
 from utils.print_utils import printProgress, printError, printSuccess
 
 
-def save_metadata(settings):
-
-    inputs = settings['inputs']
-
-    sat_name = inputs['sat_name']
-    site_name = inputs['site_name']
-    median_dir_path = inputs['median_dir_path']
-
-    # initialize metadata dict
-    metadata = {}
-
-    # if a dir has been created for the given satellite mission
-    if sat_name in os.listdir(median_dir_path):
-
-        images_dir_path = os.path.join(median_dir_path, sat_name)
-        # update the metadata dict
-        metadata[sat_name] = {'file_names':[], 'epsg':[], 'date_start':[],
-                              'date_end':[], 'number_images':[]}
-
-        # get the list of filenames and sort it chronologically
-        object_names = os.listdir(images_dir_path)
-
-        if 'meta' in object_names:
-            meta_dir_path = os.path.join(images_dir_path, 'meta')
-            object_names = os.listdir(meta_dir_path)
-        else:
-            object_names = os.listdir(images_dir_path)
-            meta_dir_path = images_dir_path
-
-        text_files = [file_name for file_name in object_names if file_name[-4:] == '.txt']
-
-        # loop through the .txt files
-        for image_meta in text_files:
-
-            # read them and extract the metadata info
-            with open(os.path.join(meta_dir_path, image_meta), 'r') as f:
-
-                filename = f.readline().split('\t')[1].replace('\n','')
-                epsg = int(f.readline().split('\t')[1].replace('\n',''))
-                date_start = f.readline().split('\t')[1].replace('\n','')
-                date_end = f.readline().split('\t')[1].replace('\n','')
-                number_images = int(f.readline().split('\t')[1].replace('\n', ''))
-
-            # store the information in the metadata dict
-            metadata[sat_name]['file_names'].append(filename)
-            metadata[sat_name]['epsg'].append(epsg)
-            metadata[sat_name]['date_start'].append(date_start)
-            metadata[sat_name]['date_end'].append(date_end)
-            metadata[sat_name]['number_images'].append(number_images)
-
-    # save a .pkl file containing the metadata dict
-    with open(os.path.join(median_dir_path,  site_name + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
-        pickle.dump(metadata, f)
-
-    printProgress('metadata saved')
-
-    return metadata
-
-
-def load_metadata(settings):
-
-    inputs = settings['inputs']
-
-    sat_name = inputs['sat_name']
-    median_dir_path = inputs['median_dir_path']
-    date_start = inputs['dates'][0]
-    date_end = inputs['dates'][1]
-
-    with open(os.path.join(median_dir_path, inputs['site_name'] + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
-        metadata_dict = pickle.load(f)
-
-    metadata_sat = metadata_dict[sat_name]
-    file_names = metadata_sat['file_names']
-
-    # initialize metadata dict
-    metadata = {}
-    for file_index, file_name in enumerate(file_names):
-
-        if date_start == metadata_sat['date_start'][file_index] and \
-             date_end == metadata_sat['date_end'][file_index]:
-
-            file_names = []
-
-            if sat_name == 'S1':
-                file_names.append(file_name)
-            else:
-                band_dict = settings['bands'][sat_name]
-
-                for band_key in band_dict.keys():
-                    file_names.append(file_name + '_' + band_key + '.tif')
-
-            metadata['file_names'] = file_names
-            metadata['epsg'] = int(metadata_sat['epsg'][file_index])
-            metadata['date_start'] = date_start
-            metadata['date_end'] = date_end
-            metadata['number_images'] = metadata_sat['number_images'][file_index]
-
-            break
-
-    printProgress('metadata loaded')
-
-    return metadata
-
 
 def retrieve_median_sar(inputs):
 
@@ -177,7 +74,6 @@ def retrieve_median_sar(inputs):
     printProgress('GEE connection closed')
     printSuccess('median image retreived')
 
-
 def retrieve_median_optical(settings):
 
     inputs = settings['inputs']
@@ -235,7 +131,7 @@ def retrieve_median_optical(settings):
                               "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
     all_names.append(image_filename[band_key])
 
-    printProgress('downloading median data for bands')
+    printProgress('downloading median data for:')
 
     if sat_name[0] == 'L' and settings['coregistration'] == True:
 
@@ -282,7 +178,6 @@ def retrieve_median_optical(settings):
     printSuccess('median image retreived')
 
     return metadata_dict
-
 
 def get_median_image_optical(collection, dates, polygon, sat_name, settings):
     """ Selection of median from a collection of images in the Earth Engine library
@@ -984,6 +879,109 @@ def download_sar(image, scale, region, filepath):
     local_zip, headers = urlretrieve(path)
     with zipfile.ZipFile(local_zip) as local_zipfile:
         return local_zipfile.extractall(path=str(filepath))
+
+
+def save_metadata(settings):
+
+    inputs = settings['inputs']
+
+    sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
+    median_dir_path = inputs['median_dir_path']
+
+    # initialize metadata dict
+    metadata = {}
+
+    # if a dir has been created for the given satellite mission
+    if sat_name in os.listdir(median_dir_path):
+
+        images_dir_path = os.path.join(median_dir_path, sat_name)
+        # update the metadata dict
+        metadata[sat_name] = {'file_names':[], 'epsg':[], 'date_start':[],
+                              'date_end':[], 'number_images':[]}
+
+        # get the list of filenames and sort it chronologically
+        object_names = os.listdir(images_dir_path)
+
+        if 'meta' in object_names:
+            meta_dir_path = os.path.join(images_dir_path, 'meta')
+            object_names = os.listdir(meta_dir_path)
+        else:
+            object_names = os.listdir(images_dir_path)
+            meta_dir_path = images_dir_path
+
+        text_files = [file_name for file_name in object_names if file_name[-4:] == '.txt']
+
+        # loop through the .txt files
+        for image_meta in text_files:
+
+            # read them and extract the metadata info
+            with open(os.path.join(meta_dir_path, image_meta), 'r') as f:
+
+                filename = f.readline().split('\t')[1].replace('\n','')
+                epsg = int(f.readline().split('\t')[1].replace('\n',''))
+                date_start = f.readline().split('\t')[1].replace('\n','')
+                date_end = f.readline().split('\t')[1].replace('\n','')
+                number_images = int(f.readline().split('\t')[1].replace('\n', ''))
+
+            # store the information in the metadata dict
+            metadata[sat_name]['file_names'].append(filename)
+            metadata[sat_name]['epsg'].append(epsg)
+            metadata[sat_name]['date_start'].append(date_start)
+            metadata[sat_name]['date_end'].append(date_end)
+            metadata[sat_name]['number_images'].append(number_images)
+
+    # save a .pkl file containing the metadata dict
+    with open(os.path.join(median_dir_path,  site_name + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
+        pickle.dump(metadata, f)
+
+    printProgress('metadata saved')
+
+    return metadata
+
+def load_metadata(settings):
+
+    inputs = settings['inputs']
+
+    sat_name = inputs['sat_name']
+    median_dir_path = inputs['median_dir_path']
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
+
+    with open(os.path.join(median_dir_path, inputs['site_name'] + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
+        metadata_dict = pickle.load(f)
+
+    metadata_sat = metadata_dict[sat_name]
+    file_names = metadata_sat['file_names']
+
+    # initialize metadata dict
+    metadata = {}
+    for file_index, file_name in enumerate(file_names):
+
+        if date_start == metadata_sat['date_start'][file_index] and \
+             date_end == metadata_sat['date_end'][file_index]:
+
+            file_names = []
+
+            if sat_name == 'S1':
+                file_names.append(file_name)
+            else:
+                band_dict = settings['bands'][sat_name]
+
+                for band_key in band_dict.keys():
+                    file_names.append(file_name + '_' + band_key + '.tif')
+
+            metadata['file_names'] = file_names
+            metadata['epsg'] = int(metadata_sat['epsg'][file_index])
+            metadata['date_start'] = date_start
+            metadata['date_end'] = date_end
+            metadata['number_images'] = metadata_sat['number_images'][file_index]
+
+            break
+
+    printProgress('metadata loaded')
+
+    return metadata
 
 
 def get_S2_SR_cloud_col(aoi, date_start, date_end, CLOUD_FILTER):
