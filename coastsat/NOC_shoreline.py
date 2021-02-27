@@ -651,14 +651,14 @@ def find_reference_threshold(settings):
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
     if sat_name == 'S1':
-        shoreline = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
+        _ = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
                                          georef, settings)
     else:
 
         _, image_labels = NOC_classify.classify_image_NN(full_image, classes, cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
-        shoreline = adjust_detection_optical(full_image, cloud_mask, image_labels,
+        _ = adjust_detection_optical(full_image, cloud_mask, image_labels,
                                              image_ref_buffer, image_epsg, georef,
                                              settings, sat_name)
 
