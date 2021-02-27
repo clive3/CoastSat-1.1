@@ -14,8 +14,6 @@ def extract_shoreline_optical(metadata, settings):
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
-    date_start = inputs['dates'][0]
-    date_end = inputs['dates'][1]
     pansharpen = inputs['pansharpen']
 
     band_dict = settings['bands'][sat_name]
@@ -102,8 +100,7 @@ def extract_shoreline_optical(metadata, settings):
 
     if inputs['create_reference_shoreline']:
         printProgress('saving reference shoreline')
-        with open(os.path.join(median_dir_path, site_name + \
-                               '_reference_shoreline_S' + date_start + '_E' + date_end + '.pkl'), 'wb') as f:
+        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(shoreline, f)
 
     printSuccess('shoreline extracted')
