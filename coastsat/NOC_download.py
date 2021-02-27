@@ -236,7 +236,7 @@ def retrieve_median_optical(settings):
                               "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
     all_names.append(image_filename[band_key])
 
-    printProgress('downloading median for bands')
+    printProgress('downloading median data for bands')
 
     if sat_name[0] == 'L' and settings['coregistration'] == True:
 

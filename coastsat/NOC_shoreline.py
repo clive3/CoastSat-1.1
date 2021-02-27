@@ -20,7 +20,7 @@ def extract_shoreline_optical(metadata, settings):
     first_key = next(iter(band_dict))
     pixel_size = band_dict[first_key][1]
 
-    base_file_name = metadata[sat_name]['file_names'][0]
+    file_names = metadata['file_names']
 
     models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
 
@@ -33,7 +33,6 @@ def extract_shoreline_optical(metadata, settings):
     # close all open figures
     plt.close('all')
 
-    file_paths = []
     # load classifier
     if sat_name in ['L5', 'L7', 'L8']:
 #            if settings['sand_color'] == 'dark':
@@ -46,9 +45,9 @@ def extract_shoreline_optical(metadata, settings):
     elif sat_name == 'S2':
         classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
 
-    for band_key in band_dict:
-        file_name = base_file_name + '_' + band_key + '.tif'
-        file_paths.append(os.path.join(median_dir_path, sat_name, band_key, file_name))
+    file_paths = []
+    for band_index, band_key in enumerate(band_dict.keys()):
+        file_paths.append(os.path.join(median_dir_path, sat_name, band_key, file_names[band_index]))
 
     # convert settings['min_beach_area'] from  metres to pixels
     min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
