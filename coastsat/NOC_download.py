@@ -9,7 +9,6 @@ def save_metadata(settings):
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
-    band_dict = settings['bands'][sat_name]
 
     # initialize metadata dict
     metadata = {}
