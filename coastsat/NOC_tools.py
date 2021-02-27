@@ -57,9 +57,9 @@ def output_to_gdf(shorelines, metadata):
             gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(geom))
             gdf.index = [index]
             gdf.loc[index, 'sat_name'] = metadata['sat_name']
-            gdf.loc[index, 'date_start'] = output['date_start']
-            gdf.loc[index, 'date_end'] = output['date_end']
-            gdf.loc[index, 'number_images'] = output['number_images']
+            gdf.loc[index, 'date_start'] = metadata['date_start']
+            gdf.loc[index, 'date_end'] = metadata['date_end']
+            gdf.loc[index, 'number_images'] = metadata['number_images']
 
             if index == 0:
                 gdf_all = gdf
