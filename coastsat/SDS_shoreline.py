@@ -540,6 +540,7 @@ def create_shoreline_buffer(im_shape, georef, image_epsg, pixel_size, settings):
 
         # convert reference shoreline to pixel coordinates
         ref_sl = settings['reference_shoreline']
+
         ref_sl_conv = SDS_tools.convert_epsg(ref_sl, settings['output_epsg'],image_epsg)[:,:-1]
         ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
         ref_sl_pix_rounded = np.round(ref_sl_pix).astype(int)

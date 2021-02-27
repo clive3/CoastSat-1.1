@@ -59,7 +59,7 @@ def extract_shoreline_optical(metadata, settings):
                                              pansharpen=pansharpen)
 
     # get image spatial reference system (epsg code) from metadata dict
-    image_epsg = metadata[sat_name]['epsg'][0]
+    image_epsg = int(metadata[sat_name]['epsg'][0])
 
     # compute cloud_cover percentage (with no data pixels)
     cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
@@ -77,9 +77,12 @@ def extract_shoreline_optical(metadata, settings):
     if cloud_cover > settings['cloud_thresh']:
         return []
 
-    # calculate a buffer around the reference shoreline (if any has been digitised)
-    image_ref_buffer = create_shoreline_buffer(cloud_mask.shape, georef, image_epsg,
-                                               pixel_size, settings)
+    buffer_shape = (cloud_mask.shape[0], cloud_mask.shape[1])
+    if inputs['create_reference_shoreline']:
+        image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
+    else:
+        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+                                                pixel_size, settings)
 
     printProgress('classifying image')
     # classify image with NN classifier
