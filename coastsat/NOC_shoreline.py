@@ -58,7 +58,7 @@ def extract_shoreline_optical(metadata, settings):
                                              pansharpen=pansharpen)
 
     # get image spatial reference system (epsg code) from metadata dict
-    image_epsg = int(metadata[sat_name]['epsg'][0])
+    image_epsg = int(metadata['epsg'])
 
     # compute cloud_cover percentage (with no data pixels)
     cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
