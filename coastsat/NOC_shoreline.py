@@ -13,7 +13,8 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
     classes = settings['classes']
 
     median_dir_path = inputs['median_dir_path']
-    sat_name = inputs['sat_list'][0]
+    sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
 
     band_list = settings['bands'][sat_name]
     first_key = next(iter(band_list))
@@ -90,8 +91,13 @@ def extract_shorelines_optical(metadata, settings, pansharpen=False):
     shorelines = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
                                           image_epsg, georef, settings, sat_name)
 
+    if inputs['create_reference_shoreline']:
+        printProgress('saving reference shoreline')
+        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
+            pickle.dump(shorelines, f)
+
     printProgress('shoreline extracted')
-    
+
     return shorelines
 
 
@@ -375,6 +381,9 @@ def extract_shorelines_sar(metadata, settings):
 
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
     pixel_size = inputs['pixel_size']
 
     file_name = metadata['file_name']
@@ -409,6 +418,12 @@ def extract_shorelines_sar(metadata, settings):
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
+
+    if inputs['create_reference_shoreline']:
+        printProgress('saving reference shoreline')
+        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' +\
+                               'S' + date_start + '_E' + date_end +'.pkl'), 'wb') as f:
+            pickle.dump(shorelines, f)
 
     printSuccess('shoreline extracted')
 
@@ -605,13 +620,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
     fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
-
-    plt.close()
-
-    if inputs['create_reference_shoreline']:
-        printProgress('saving reference shoreline')
-        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
-            pickle.dump(shorelines, f)
 
     return shorelines
 
