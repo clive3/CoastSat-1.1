@@ -99,7 +99,7 @@ def extract_shoreline_optical(metadata, settings):
         with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(shoreline, f)
 
-    printProgress('shoreline extracted')
+    printSuccess('shoreline extracted')
 
     return shoreline
 
