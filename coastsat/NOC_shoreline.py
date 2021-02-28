@@ -14,6 +14,8 @@ def extract_shoreline_optical(metadata, settings):
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
     pansharpen = inputs['pansharpen']
 
     band_dict = settings['bands'][sat_name]
@@ -90,14 +92,27 @@ def extract_shoreline_optical(metadata, settings):
     _, image_labels = NOC_classify.classify_image_NN(image_ms, classes, cloud_mask,
                                                        min_beach_area_pixels, classifier)
 
-    printProgress('select threshold')
     # find the shoreline interactively
     shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
                                           image_epsg, georef, settings, sat_name)
 
-    printSuccess('shoreline extracted')
+    gdf = NOC_tools.output_to_gdf(shoreline, metadata)
+    file_string = f'{site_name}_shoreline_{sat_name}' + \
+                  f'_S{date_start}_E{inputs[date_end]}.geojson'
+    if ~gdf.empty:
+        gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
+        # save GEOJSON layer to file
+        gdf.to_file(os.path.join(inputs['median_dir_path'],
+                                 file_string),
+                    driver='GeoJSON', encoding='utf-8')
 
-    return shoreline
+        printSuccess('shoreline saved')
+    else:
+        printWarning('no shorelines to be seen ...')
+
+    # close figure window if still open
+    if plt.get_fignums():
+        plt.close()
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
@@ -316,7 +331,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
      # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-        fig.savefig(os.path.join(jpeg_file_path, date_start + '_' + date_end + '_' + sat_name + '.jpg'), dpi=150)
+        fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'), dpi=150)
 
     printProgress('shoreline extracted')
 
@@ -381,6 +396,8 @@ def extract_shoreline_sar(metadata, settings):
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
     pixel_size = inputs['pixel_size']
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
 
     file_names = metadata['file_names']
 
@@ -414,7 +431,7 @@ def extract_shoreline_sar(metadata, settings):
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
 
         file_string = f'{site_name}_shoreline_{inputs["polarisation"]}' + \
-                      f'_S{inputs["dates"][0]}_E{inputs["dates"][1]}.geojson'
+                      f'_S{date_start}_E{inputs[date_end]}.geojson'
 
         if ~gdf.empty:
             gdf.crs = {'init':'epsg:'+str(settings['output_epsg'])} # set layer projection
@@ -422,8 +439,8 @@ def extract_shoreline_sar(metadata, settings):
             gdf.to_file(os.path.join(inputs['median_dir_path'],
                                      file_string),
                                      driver='GeoJSON', encoding='utf-8')
-            printProgress(f'written: {file_string}')
-            print()
+
+            printSuccess('shoreline saved')
         else:
             printWarning('no shorelines to be seen ...')
 
@@ -431,7 +448,6 @@ def extract_shoreline_sar(metadata, settings):
     if plt.get_fignums():
         plt.close()
 
-    printSuccess('shoreline extracted')
 
 
 def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settings):
@@ -574,7 +590,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
             break
 
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-    fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start + \
+    fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
 
     return shoreline, t_sar
@@ -594,7 +610,7 @@ def find_reference_threshold(settings):
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
     if not os.path.exists(jpeg_file_path):
         os.makedirs(jpeg_file_path)
-        
+
     if sat_name != 'S1':
 
         classes = settings['classes']
