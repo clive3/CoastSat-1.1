@@ -712,7 +712,7 @@ def find_reference_threshold(settings):
     if plt.get_fignums():
         plt.close()
 
-    if inputs['create_reference_shoreline']:
+    if sat_name == 'S1' and inputs['create_reference_shoreline']:
         printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
     else:
         printSuccess(f'reference threshold: {reference_threshold}')
