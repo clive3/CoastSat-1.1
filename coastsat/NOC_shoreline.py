@@ -1,7 +1,7 @@
 from scipy.ndimage import gaussian_filter
 
 from coastsat.SDS_shoreline import *
-from coastsat import NOC_preprocess, NOC_classify
+from coastsat import NOC_preprocess, NOC_classify, NOC_tools
 
 from utils.print_utils import printProgress, printSuccess, printWarning
 
@@ -395,9 +395,6 @@ def extract_shoreline_sar(metadata, settings):
 
     for file_index, file_name in enumerate(file_names):
 
-        date_start = metadata['date_start']
-        date_end = metadata['date_end']
-
         file_path = os.path.join(median_dir_path, sat_name, file_name)
 
         # close all open figures
@@ -406,30 +403,35 @@ def extract_shoreline_sar(metadata, settings):
         ## read the geotiff
         sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
 
-        buffer_shape = (sar_image.shape[0], sar_image.shape[1])
         # calculate a buffer around the reference shoreline if it has already been generated
-        if inputs['create_reference_shoreline']:
-            image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
-        else:
-            image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+        buffer_shape = (sar_image.shape[0], sar_image.shape[1])
+        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                     pixel_size, settings)
 
-        shoreline = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg,
+        shoreline, _ = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg,
                                           georef, settings)
 
-        if inputs['create_reference_shoreline']:
-            printProgress('saving reference shoreline')
-            with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' +
-                                   'S' + date_start + '_E' + date_end + '.pkl'), 'wb') as f:
-                pickle.dump(shoreline, f)
+        gdf = NOC_tools.output_to_gdf(shoreline, metadata)
+
+        file_string = f'{site_name}_shoreline_{inputs["polarisation"]}' + \
+                      f'_S{inputs["dates"][0]}_E{inputs["dates"][1]}.geojson'
+
+        if ~gdf.empty:
+            gdf.crs = {'init':'epsg:'+str(settings['output_epsg'])} # set layer projection
+            # save GEOJSON layer to file
+            gdf.to_file(os.path.join(inputs['median_dir_path'],
+                                     file_string),
+                                     driver='GeoJSON', encoding='utf-8')
+            printProgress(f'written: {file_string}')
+            print()
+        else:
+            printWarning('no shorelines to be seen ...')
 
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
 
     printSuccess('shoreline extracted')
-
-    return shoreline
 
 
 def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settings):
@@ -575,7 +577,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     fig.savefig(os.path.join(jpeg_file_path, sat_name + '_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
 
-    return shoreline
+    return shoreline, t_sar
 
 
 def find_reference_threshold(settings):
@@ -588,9 +590,13 @@ def find_reference_threshold(settings):
 
     models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
 
-    if sat_name == 'S1':
-        pixel_size = inputs['pixel_size']
-    else:
+    # create a subfolder to store the .jpg images showing the detection
+    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+    if not os.path.exists(jpeg_file_path):
+        os.makedirs(jpeg_file_path)
+        
+    if sat_name != 'S1':
+
         classes = settings['classes']
         band_dict = settings['bands'][sat_name]
         first_key = next(iter(band_dict))
@@ -663,20 +669,26 @@ def find_reference_threshold(settings):
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
     if sat_name == 'S1':
-        _ = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
+        reference_shoreline, reference_threshold = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
                                          georef, settings)
-    else:
 
+        printProgress('saving reference shoreline')
+        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
+            pickle.dump(reference_shoreline, f)
+
+    else:
         _, image_labels = NOC_classify.classify_image_NN(full_image, classes, cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
-        _ = adjust_detection_optical(full_image, cloud_mask, image_labels,
+        _, reference_threshold = adjust_detection_optical(full_image, cloud_mask, image_labels,
                                              image_ref_buffer, image_epsg, georef,
                                              settings, sat_name)
 
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
+
+    return reference_threshold
 
 
 def process_sar_shoreline(contours, georef, image_epsg, settings):

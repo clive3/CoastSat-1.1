@@ -15,15 +15,11 @@ def preprocess_sar(file_name):
 
 def get_reference_shoreline_median(inputs):
 
-    sat_name = inputs['sat_name']
     site_name = inputs['site_name']
-    date_start = inputs['dates'][0]
-    date_end = inputs['dates'][1]
     median_dir_path = inputs['median_dir_path']
 
     # check if reference shoreline already exists in the corresponding folder
-    ref_shoreline_file_name = site_name + '_reference_shoreline_' +  \
-                                'S' + date_start + '_E' + date_end + '.pkl'
+    ref_shoreline_file_name = site_name + '_reference_shoreline.pkl'
     # if it exist, load it and return it
     if ref_shoreline_file_name in os.listdir(median_dir_path):
 
@@ -32,10 +28,6 @@ def get_reference_shoreline_median(inputs):
 
         printProgress('reference shoreline loaded')
         return ref_shoreline
-
-    elif sat_name != 'S1':
-        printWarning(f'cannot find: {ref_shoreline_file_name}')
-        return np.zeros(1)
     else:
         printWarning('no reference shoreline found')
         return np.zeros(1)
