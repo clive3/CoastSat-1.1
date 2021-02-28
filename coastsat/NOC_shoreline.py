@@ -85,7 +85,9 @@ def extract_shoreline_optical(metadata, settings):
 
     buffer_shape = cloud_mask.shape
     image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
-                                                pixel_size, settings)
+                                               pixel_size, settings)
+    mndwi_buffer = create_mndwi_buffer(settings['reference_shoreline'], buffer_shape,
+                                       georef, image_epsg, settings)
 
     printProgress('classifying image')
     # classify image with NN classifier
@@ -94,7 +96,7 @@ def extract_shoreline_optical(metadata, settings):
 
     # find the shoreline interactively
     shoreline, _ = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
-                                          image_epsg, georef, settings, sat_name)
+                                            mndwi_buffer, image_epsg, georef, settings, sat_name)
 
     gdf = NOC_tools.output_to_gdf(shoreline, metadata)
     file_string = f'{site_name}_shoreline_{sat_name}' + \
@@ -115,8 +117,8 @@ def extract_shoreline_optical(metadata, settings):
         plt.close()
 
 
-def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer, image_epsg, georef,
-                     settings, sat_name):
+def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
+                             mndwi_buffer, image_epsg, georef, settings, sat_name):
 
     inputs = settings['inputs']
     site_name = inputs['site_name']
@@ -134,7 +136,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     image_mndwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
     # buffer MNDWI using reference shoreline
     image_mndwi_buffer = np.copy(image_mndwi)
-    image_mndwi_buffer[~image_ref_buffer] = np.nan
+    image_mndwi_buffer[~mndwi_buffer] = np.nan
 
 
     print(f'@@@ MNDWI min: {np.nanmin(image_mndwi_buffer)}')
@@ -200,6 +202,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     ax3.imshow(image_mndwi, cmap='bwr')
     ax3.axis('off')
     ax3.set_title('MNDWI', fontweight='bold', fontsize=16)
+    ax3.imshow(image_ref_buffer, cmap='binary', alpha=0.3)
 
     # plot histogram of MNDWI values
     bin_width = 0.01
@@ -246,7 +249,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     else:
         ref_threshold = t_mndwi
 
-    ax4.axvline(x=ref_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
+    ax4.axvline(x=ref_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {ref_threshold:4.3f}')
 
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
@@ -355,14 +358,14 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
     # stack indices together
     image_ind = np.stack((image_wi, image_mwi), axis=-1)
-    vec_ind = image_ind.reshape(nrows*ncols,2)
+    vec_ind = image_ind.reshape(nrows*ncols, 2)
 
     # reshape labels into vectors
     vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
     vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
     vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
-    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
-    vec_all_land = np.logical_or(np.logical_or(np.logical_or(vec_land2, vec_land3), vec_land1), vec_sand)
+#    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
+    vec_all_land = np.logical_or(np.logical_or(vec_land2, vec_land3), vec_land1)
 
     vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
     vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
@@ -638,7 +641,7 @@ def find_reference_threshold(settings):
 
     metadata_sat = metadata_dict[sat_name]
     file_names = metadata_sat['file_names']
-    image_epsg = metadata_sat['epsg'][0]
+    image_epsg = int(metadata_sat['epsg'][0])
 
     printProgress('file_names loaded')
 
@@ -691,9 +694,12 @@ def find_reference_threshold(settings):
     buffer_shape = (full_image.shape[0], full_image.shape[1])
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
+    reference_shoreline = NOC_preprocess.get_reference_shoreline_median(inputs)
+    mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef, image_epsg, settings)
+
     if sat_name == 'S1':
-        reference_shoreline, reference_threshold = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
-                                         georef, settings)
+        reference_shoreline, reference_threshold = adjust_detection_sar(full_image, image_ref_buffer,
+                                                                        image_epsg, georef, settings)
 
         with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(reference_shoreline, f)
@@ -703,7 +709,7 @@ def find_reference_threshold(settings):
                                                          min_beach_area_pixels, classifier)
 
         _, reference_threshold = adjust_detection_optical(full_image, cloud_mask, image_labels,
-                                             image_ref_buffer, image_epsg, georef,
+                                             image_ref_buffer, mndwi_buffer, image_epsg, georef,
                                              settings, sat_name)
 
     # close figure window if still open
@@ -741,3 +747,33 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     shoreline = np.transpose(np.array([x_points, y_points]))
 
     return shoreline
+
+
+
+def create_mndwi_buffer(reference_shoreline, im_shape, georef, image_epsg, settings):
+
+    # convert reference shoreline to pixel coordinates
+    ref_sl = reference_shoreline
+
+    ref_sl_conv = SDS_tools.convert_epsg(ref_sl, settings['output_epsg'],image_epsg)[:,:-1]
+    ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
+    ref_sl_pix_rounded = np.round(ref_sl_pix).astype(int)
+
+    # make sure that the pixel coordinates of the reference shoreline are inside the image
+    idx_row = np.logical_and(ref_sl_pix_rounded[:,0] > 0, ref_sl_pix_rounded[:,0] < im_shape[1])
+    idx_col = np.logical_and(ref_sl_pix_rounded[:,1] > 0, ref_sl_pix_rounded[:,1] < im_shape[0])
+    idx_inside = np.logical_and(idx_row, idx_col)
+    ref_sl_pix_rounded = ref_sl_pix_rounded[idx_inside,:]
+
+    # create binary image of the reference shoreline (1 where the shoreline is 0 otherwise)
+    im_binary = np.zeros(im_shape)
+    for j in range(len(ref_sl_pix_rounded)):
+        im_binary[ref_sl_pix_rounded[j,1], ref_sl_pix_rounded[j,0]] = 1
+    im_binary = im_binary.astype(bool)
+
+    # dilate the binary image to create a buffer around the reference shoreline
+    max_dist_ref_pixels = 100
+    se = morphology.disk(max_dist_ref_pixels)
+    im_buffer = morphology.binary_dilation(im_binary, se)
+
+    return im_buffer
