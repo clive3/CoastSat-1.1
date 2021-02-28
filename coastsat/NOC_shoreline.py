@@ -81,11 +81,8 @@ def extract_shoreline_optical(metadata, settings):
     if cloud_cover > settings['cloud_thresh']:
         return []
 
-    buffer_shape = (cloud_mask.shape[0], cloud_mask.shape[1])
-    if inputs['create_reference_shoreline']:
-        image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
-    else:
-        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+    buffer_shape = cloud_mask.shape
+    image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                 pixel_size, settings)
 
     printProgress('classifying image')
@@ -97,11 +94,6 @@ def extract_shoreline_optical(metadata, settings):
     # find the shoreline interactively
     shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
                                           image_epsg, georef, settings, sat_name)
-
-    if inputs['create_reference_shoreline']:
-        printProgress('saving reference shoreline')
-        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
-            pickle.dump(shoreline, f)
 
     printSuccess('shoreline extracted')
 

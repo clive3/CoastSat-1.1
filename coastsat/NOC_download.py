@@ -44,7 +44,8 @@ def retrieve_median_sar(inputs):
 
     median_filename = inputs['site_name'] + '_median_' + \
                        'S' + date_start + '_E' + date_end + '.tif'
-    download_sar(median_image, ee.Number(pixel_size), inputs['polygon'], sar_dir_path)
+    download_median_image(median_image, ee.Number(pixel_size),
+                          inputs['polygon'], sar_dir_path)
 
     # rename the file as the image is downloaded as 'data.tif'
     # locate download
@@ -72,7 +73,7 @@ def retrieve_median_sar(inputs):
             f.write('%s\t%s\n' % (key, metadata_dict[key]))
 
     printProgress('GEE connection closed')
-    printSuccess('median image retreived')
+    printSuccess('median image downloaded')
 
 def retrieve_median_optical(settings):
 
@@ -153,7 +154,8 @@ def retrieve_median_optical(settings):
         local_file_path = os.path.join(band_file_path, image_file_name)
 
         printProgress(f'\t"{band_key}" bands:\t{band_names}')
-        download_optical(median_image, ee.Number(band_scale), polygon, band_file_path, band_names)
+        download_median_image(median_image, ee.Number(band_scale),
+                              polygon, band_file_path, bands=band_names)
 
         try:
             os.rename(local_data, local_file_path)
@@ -175,7 +177,7 @@ def retrieve_median_optical(settings):
             f.write('%s\t%s\n' % (key, metadata_dict[key]))
 
     printProgress('GEE connection closed')
-    printSuccess('median image retreived')
+    printSuccess('median image downloaded')
 
     return metadata_dict
 
@@ -840,24 +842,12 @@ def check_training_images_available(inputs):
     return image_dict_T1
 
 
-def download_optical(image, scale, polygon, filepath, bands):
-    """It will open and download automatically a zip dir containing Geotiff data of 'image'.
-    If additional parameters are needed, see also:
-    https://github.com/google/earthengine-api/blob/master/python/ee/image.py
+def download_median_image(image, scale, region, filepath, bands=['VV','VH']):
 
-    Parameters:
-        name (str): name of the created dir
-        image (ee.image.Image): image to export
-        scale (int): resolution of export in meters (e.g: 30 for Landsat)
-        region (list): region of interest
-
-    Returns:
-        path (str)
-      """
     path = image.getDownloadURL({
         'name': 'data',
         'scale': scale,
-        'region': polygon,
+        'region': region,
         'filePerBand': False,
         'bands': bands
     })
@@ -865,21 +855,6 @@ def download_optical(image, scale, polygon, filepath, bands):
     local_zip, headers = urlretrieve(path)
     with zipfile.ZipFile(local_zip) as local_zipfile:
         return local_zipfile.extractall(path=str(filepath))
-
-def download_sar(image, scale, region, filepath):
-
-    path = image.getDownloadURL({
-        'name': 'data',
-        'scale': scale,
-        'region': region,
-        'filePerBand': False,
-        'bands': ['VV','VH']
-    })
-
-    local_zip, headers = urlretrieve(path)
-    with zipfile.ZipFile(local_zip) as local_zipfile:
-        return local_zipfile.extractall(path=str(filepath))
-
 
 def save_metadata(settings):
 

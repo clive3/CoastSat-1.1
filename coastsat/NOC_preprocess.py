@@ -32,6 +32,7 @@ def get_reference_shoreline_median(inputs):
 
         printProgress('reference shoreline loaded')
         return ref_shoreline
+
     elif sat_name != 'S1':
         printWarning(f'cannot find: {ref_shoreline_file_name}')
         return np.zeros(1)
