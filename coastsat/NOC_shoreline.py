@@ -339,8 +339,6 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
     if reference_threshold:
         printProgress('shoreline extracted')
-    else:
-        printSuccess(f'reference threshold: {t_mndwi:5.3f}')
 
     return shoreline, t_mndwi
 
@@ -715,7 +713,7 @@ def find_reference_threshold(settings):
     if sat_name == 'S1' and inputs['create_reference_shoreline']:
         printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
     else:
-        printSuccess(f'reference threshold: {reference_threshold}')
+        printSuccess(f'reference threshold: {reference_threshold:4.3f}')
 
     return reference_threshold
 
