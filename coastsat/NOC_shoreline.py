@@ -362,7 +362,7 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
     vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
     vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
-    vec_all_land = np.logical_or(vec_land2, vec_land3)
+    vec_all_land = np.logical_or(np.logical_or(np.logical_or(vec_land2, vec_land3), vec_land1), vec_sand)
 
     vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
     vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
@@ -685,7 +685,7 @@ def find_reference_threshold(settings):
                 optical_image = np.expand_dims(optical_image, axis=3)
                 full_image = np.append(full_image, optical_image, axis=3)
 
-    full_image = np.median(full_image, axis=3)
+    full_image = np.mean(full_image, axis=3)
 
     # calculate a buffer around the reference shoreline if it has already been generated
     buffer_shape = (full_image.shape[0], full_image.shape[1])
