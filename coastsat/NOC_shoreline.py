@@ -93,12 +93,12 @@ def extract_shoreline_optical(metadata, settings):
                                                        min_beach_area_pixels, classifier)
 
     # find the shoreline interactively
-    shoreline = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
+    shoreline, _ = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
                                           image_epsg, georef, settings, sat_name)
 
     gdf = NOC_tools.output_to_gdf(shoreline, metadata)
     file_string = f'{site_name}_shoreline_{sat_name}' + \
-                  f'_S{date_start}_E{inputs[date_end]}.geojson'
+                  f'_S{date_start}_E{date_end}.geojson'
     if ~gdf.empty:
         gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
         # save GEOJSON layer to file
@@ -335,7 +335,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
     printProgress('shoreline extracted')
 
-    return shoreline
+    return shoreline, t_mndwi
 
 
 def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
