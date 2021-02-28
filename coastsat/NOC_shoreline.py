@@ -695,7 +695,6 @@ def find_reference_threshold(settings):
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
 
     reference_shoreline = NOC_preprocess.get_reference_shoreline_median(inputs)
-    mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef, image_epsg, settings)
 
     if sat_name == 'S1':
         reference_shoreline, reference_threshold = adjust_detection_sar(full_image, image_ref_buffer,
@@ -705,6 +704,8 @@ def find_reference_threshold(settings):
             pickle.dump(reference_shoreline, f)
 
     else:
+        mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef, image_epsg, settings)
+        
         _, image_labels = NOC_classify.classify_image_NN(full_image, classes, cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
