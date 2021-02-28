@@ -194,7 +194,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     ax2.imshow(image_class)
     ax2.axis('off')
 
-    ax2.set_title(date_start + ' to ' +date_end, fontweight='bold', fontsize=12)
+    ax2.set_title(date_start + ' to ' + date_end, fontweight='bold', fontsize=12)
 
     # plot image 3 (MNDWI)
     ax3.imshow(image_mndwi, cmap='bwr')
@@ -241,8 +241,12 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
     thresh_label = ax4.text(t_mndwi+bin_width, 4, str(f'{t_mndwi:4.3f}'), rotation=90)
-    if not reference_threshold: reference_threshold = t_mndwi
-    ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
+    if reference_threshold:
+        ref_threshold = reference_threshold
+    else:
+        ref_threshold = t_mndwi
+
+    ax4.axvline(x=ref_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
 
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
@@ -333,7 +337,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
         fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'), dpi=150)
 
-    printProgress('shoreline extracted')
+    if reference_threshold:
+        printProgress('shoreline extracted')
+    else:
+        printSuccess(f'reference threshold: {t_mndwi:5.3f}')
 
     return shoreline, t_mndwi
 
