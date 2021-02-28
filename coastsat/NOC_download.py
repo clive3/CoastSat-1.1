@@ -942,7 +942,6 @@ def load_metadata(settings):
                 file_names.append(file_name)
             else:
                 band_dict = settings['bands'][sat_name]
-
                 for band_key in band_dict.keys():
                     file_names.append(file_name + '_' + band_key + '.tif')
 
