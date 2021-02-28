@@ -598,6 +598,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
 
+    ## if creating reference shoreline return the Otsu threshold
+    if inputs['create_reference_shoreline']:
+        t_sar = reference_threshold
+
     return shoreline, t_sar
 
 
@@ -693,7 +697,6 @@ def find_reference_threshold(settings):
         reference_shoreline, reference_threshold = adjust_detection_sar(full_image, image_ref_buffer, image_epsg,
                                          georef, settings)
 
-        printProgress('saving reference shoreline')
         with open(os.path.join(median_dir_path, site_name + '_reference_shoreline.pkl'), 'wb') as f:
             pickle.dump(reference_shoreline, f)
 
@@ -708,6 +711,11 @@ def find_reference_threshold(settings):
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
+
+    if inputs['create_reference_shoreline']:
+        printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
+    else:
+        printSuccess(f'reference threshold: {reference_threshold}')
 
     return reference_threshold
 
