@@ -127,7 +127,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
     median_dir_path = inputs['median_dir_path']
-    reference_threshold = inputs['reference_threshold']
+    if ref:
+        reference_threshold = 0
+    else:
+        reference_threshold = inputs['reference_threshold']
 
     #  image_classifiery will become filled with labels
     image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
@@ -611,13 +614,7 @@ def find_reference_threshold(settings):
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
-    polarisation = inputs['polarisation']
-    if polarisation == 'VV':
-        polarisation_band_index = 0
-    elif polarisation == 'VH':
-        polarisation_band_index = 1
-    else:
-        printError(f'select SAR band correctly: {polarisation}')
+
     ref_date_start = date.fromisoformat(inputs['dates'][0])
     ref_date_end = date.fromisoformat(inputs['dates'][1])
 
@@ -628,7 +625,17 @@ def find_reference_threshold(settings):
     if not os.path.exists(jpeg_file_path):
         os.makedirs(jpeg_file_path)
 
-    if sat_name != 'S1':
+    if sat_name == 'S1':
+        
+        polarisation = inputs['polarisation']
+        if polarisation == 'VV':
+            polarisation_band_index = 0
+        elif polarisation == 'VH':
+            polarisation_band_index = 1
+        else:
+            printError(f'select SAR band correctly: {polarisation}')
+
+    else:
 
         classes = settings['classes']
         band_dict = settings['bands'][sat_name]
