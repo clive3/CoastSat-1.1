@@ -17,11 +17,16 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     site_name = inputs['site_name']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
+
     pansharpen = inputs['pansharpen']
     if pansharpen:
         shoreline_folder = 'pan'
+        shoreline_file_name = f'{site_name}_shoreline_{sat_name}' + \
+                              f'_ps_S{date_start}_E{date_end}' + '.geojson'
     else:
         shoreline_folder = 'standard'
+        shoreline_file_name = f'{site_name}_shoreline_{sat_name}' + \
+                              f'_S{date_start}_E{date_end}' + '.geojson'
 
     shoreline_dir_path = os.path.join(median_dir_path, 'shorelines', shoreline_folder)
     if not os.path.exists(shoreline_dir_path):
@@ -109,13 +114,12 @@ def extract_shoreline_optical(metadata, settings, ref=False):
 
     if not skip_image:
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
-        file_string = f'{site_name}_shoreline_{sat_name}' + \
-                      f'_S{date_start}_E{date_end}.geojson'
+
         if ~gdf.empty:
             gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
             # save GEOJSON layer to file
-            gdf.to_file(os.path.join(inputs['median_dir_path'],'shorelines', shoreline_folder,
-                                     file_string),
+            gdf.to_file(os.path.join(inputs['median_dir_path'],'shorelines',
+                                     shoreline_folder, shoreline_file_name),
                         driver='GeoJSON', encoding='utf-8')
 
             printSuccess('shoreline saved')
@@ -646,7 +650,7 @@ def find_reference_threshold(settings):
         os.makedirs(jpeg_file_path)
 
     if sat_name == 'S1':
-        
+
         sigma = inputs['sigma']
         polarisation = inputs['polarisation']
         if polarisation == 'VV':
