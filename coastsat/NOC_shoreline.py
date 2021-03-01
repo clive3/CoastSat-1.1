@@ -40,7 +40,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
 
     models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
 
-    bands_20m = band_dict['20m']
+    bands_20m = band_dict['20m'][0]
     for SWIR_index, band in enumerate(bands_20m):
         if settings['SWIR'] == band:
             break
@@ -248,6 +248,8 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
     # use classification to refine threshold and extract the sand/water interface
     contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
+    if reference_threshold == 0:
+        reference_threshold = t_mndwi
 
     # process the water contours into a shoreline
     shoreline = process_shoreline(contours_mndwi, cloud_mask, georef, image_epsg, settings)
@@ -262,10 +264,9 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot1 = ax1.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     sl_plot2 = ax2.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
-    t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
-    thresh_label = ax4.text(t_mndwi+bin_width, 4, str(f'{t_mndwi:4.3f}'), rotation=90)
-    if reference_threshold == 0:
-        reference_threshold = t_mndwi
+    t_line = ax4.axvline(x=reference_threshold, ls='--', c='k', lw=1.5, label=f'threshold')
+    thresh_label = ax4.text(reference_threshold+bin_width, 4, str(f'{reference_threshold:4.3f}'), rotation=90)
+
     ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
 
     ax4.legend(loc=1)
