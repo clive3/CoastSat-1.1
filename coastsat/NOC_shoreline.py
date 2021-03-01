@@ -482,19 +482,14 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
 
     if ref:
         image_pol = np.copy(sar_image)
-        # and the vectors needed for the histogram
-        vec_shape = (sar_image.shape[0] * sar_image.shape[1])
-        vec_pol = image_pol.reshape(vec_shape)
-        """
-#        image_pol = np.copy(sar_image)
-#        image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
+        image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
         print(f'@@@  image_pol {sar_image.shape}')
         vec_shape = (sar_image.shape[0] * sar_image.shape[1] * sar_image.shape[2])
         vec_pol = sar_image.reshape(vec_shape)
         print(f'@@@  vec_pol {vec_pol.shape}')
         print(f'@@@  image_pol {sar_image.shape}')
         image_pol = np.mean(sar_image, axis=2)
-        print(f'@@@  image_pol {image_pol.shape}')"""
+        print(f'@@@  image_pol {image_pol.shape}')
     else:
         image_pol = np.copy(sar_image[:,:,band_index])
         # and the vectors needed for the histogram
@@ -616,9 +611,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
 
-    ## if creating reference shoreline return the Otsu threshold
-    if inputs['reference_threshold'] == 0:
-        t_sar = reference_threshold
 
     return shoreline, t_sar
 
@@ -688,6 +680,8 @@ def find_reference_threshold(settings):
             if sat_name == 'S1':
                 file_path_list.append(os.path.join(median_dir_path, sat_name, file_name))
 
+                sar_image, georef = NOC_preprocess.preprocess_sar(file_name)
+                image_shape = (sar_image.shape[0], sar_image.shape[1], len(file_path_list))
             else:
                 file_paths = []
                 for band_key in band_dict:
@@ -695,56 +689,54 @@ def find_reference_threshold(settings):
                                                    band_key, file_name + '_' + band_key + '.tif'))
                 file_path_list.append(file_paths)
 
-    full_image = np.array([])
-    for file_paths in file_path_list:
+                optical_image, georef = NOC_preprocess.preprocess_sar(file_name)
+                image_shape = (optical_image.shape[0], optical_image.shape[1],
+                               optical_image.shape[2], len(file_path_list))
+
+    threshold_images = np.ndarray(image_shape)
+    for file_index, file_paths in enumerate(file_path_list):
 
         if sat_name == 'S1':
 
-            sar_image, georef = NOC_preprocess.preprocess_sar(file_paths)
-            sar_image = sar_image[:,:,polarisation_band_index]
-            sar_image = np.expand_dims(sar_image, axis=2)
+            sar_image, _ = NOC_preprocess.preprocess_sar(file_paths)
+            threshold_images[:, :, file_index] = sar_image[:,:,polarisation_band_index]
 
-            full_image = np.append(full_image, sar_image)
-            image_shape = (sar_image.shape[0], sar_image.shape[1], len(file_path_list))
         else:
 
-            optical_image, georef, cloud_mask, image_extra, image_QA, image_nodata = \
+            optical_image, _, cloud_mask, image_extra, image_QA, image_nodata = \
                 NOC_preprocess.preprocess_single(file_paths, sat_name, cloud_mask_issue,
                                                  pansharpen=pansharpen,
                                                  SWIR_index=SWIR_index)
-            optical_image = np.expand_dims(optical_image, axis=3)
-            full_image = np.append(full_image, optical_image)
-            image_shape = (optical_image.shape[0], optical_image.shape[1], 5*len(file_path_list))
+            threshold_images[:, :, :, file_index] = optical_image
 
-#    mean_image = np.mean(full_image.reshape(image_shape), axis=2)
 
-    full_image = full_image.reshape(image_shape)
-    full_image = np.mean(full_image, axis=2)
 
     # calculate a buffer around the reference shoreline if it has already been generated
-    buffer_shape = (full_image.shape[0], full_image.shape[1])
+    buffer_shape = (threshold_images.shape[0], threshold_images.shape[1])
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
+    threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
 
     if sat_name == 'S1':
-        reference_shoreline, reference_threshold = adjust_detection_sar(full_image, image_ref_buffer,
+        reference_shoreline, reference_threshold = adjust_detection_sar(threshold_images, image_ref_buffer,
                                                                         image_epsg, georef, settings,
                                                                         ref=True)
 
     else:
-        reference_shoreline = NOC_preprocess.get_reference_shoreline_median(inputs, ref=True)
+        reference_shoreline = NOC_preprocess.load_reference_shoreline_median(inputs, ref=True)
         mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef,
                                            image_epsg, settings)
 
-        _, image_labels = NOC_classify.classify_image_NN(full_image, classes, cloud_mask,
+        threshold_images = np.mean(threshold_images, axis=3)
+
+        _, image_labels = NOC_classify.classify_image_NN(threshold_images, classes, threshold_cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
         reference_shoreline, reference_threshold = \
-                    adjust_detection_optical(full_image, cloud_mask, image_labels,
+                    adjust_detection_optical(threshold_images, threshold_cloud_mask, image_labels,
                                              image_ref_buffer, mndwi_buffer, image_epsg, georef,
                                              settings, sat_name, ref=True)
 
-    with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' + sat_name + \
-                      '_S' + inputs['dates'][0] + '_E' + inputs['dates'][1] + '.pkl'), 'wb') as f:
+    with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' + sat_name + '.pkl'), 'wb') as f:
         pickle.dump(reference_shoreline, f)
 
     # close figure window if still open
