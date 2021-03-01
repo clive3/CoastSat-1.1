@@ -13,11 +13,13 @@ def preprocess_sar(file_name):
     return sar_stack, georef
 
 
-def get_reference_shoreline_median(inputs):
+def get_reference_shoreline_median(inputs, ref=False):
 
     site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
 
+    if ref:
+        ref_shoreline_file_name = site_name + '_reference_shoreline.pkl'
     # check if reference shoreline already exists in the corresponding folder
     ref_shoreline_file_name = site_name + '_reference_shoreline.pkl'
     # if it exist, load it and return it
