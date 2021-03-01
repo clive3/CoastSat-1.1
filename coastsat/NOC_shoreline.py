@@ -33,7 +33,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     if pansharpen:
         shoreline_folder = 'pan'
         shoreline_file_name = f'{site_name}_shoreline_{sat_name}' + \
-                              f'_ps_S{date_start}_E{date_end}' + '.geojson'
+                              f'_PS_S{date_start}_E{date_end}' + '.geojson'
     else:
         shoreline_folder = 'standard'
         shoreline_file_name = f'{site_name}_shoreline_{sat_name}' + \
