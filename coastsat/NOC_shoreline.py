@@ -135,7 +135,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     #  image_classifiery will become filled with labels
     image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
     image_classified = np.copy(image_RGB)
-    image_classified = np.where(np.isnan(image_classified), 1.0, image_classified)
+    image_classified = np.where(np.isnan(image_classified), 1.0, 1.0)
 
     # compute MNDWI grayscale image
     image_mndwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
@@ -143,9 +143,8 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     image_mndwi_buffer = np.copy(image_mndwi)
     image_mndwi_buffer[~mndwi_buffer] = np.nan
 
-
-    print(f'@@@ MNDWI min: {np.nanmin(image_mndwi_buffer)}')
-    print(f'@@@ MNDWI max: {np.nanmax(image_mndwi_buffer)}')
+    print(f'@@@ MNDWI min: {np.nanmin(image_mndwi_buffer):4.3f}')
+    print(f'@@@ MNDWI max: {np.nanmax(image_mndwi_buffer):4.3f}')
 
     # for each class add it to image_classified and
     # extract the MDWI values for all pixels in that class
@@ -249,7 +248,9 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     sl_plot3 = ax3.plot(sl_pix[:, 0], sl_pix[:, 1], 'k.', markersize=3)
     t_line = ax4.axvline(x=t_mndwi, ls='--', c='k', lw=1.5, label=f'threshold')
     thresh_label = ax4.text(t_mndwi+bin_width, 4, str(f'{t_mndwi:4.3f}'), rotation=90)
-    ax4.axvline(x=t_mndwi, ls='--', c='r', lw=1.5, label=f'ref threshold {t_mndwi:4.3f}')
+    if reference_threshold == 0:
+        reference_threshold = t_mndwi
+    ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.3f}')
 
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
@@ -302,45 +303,47 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
 
     # let the user press a key, right arrow to keep the image, left arrow to skip it
     # to break the loop the user can press 'escape'
-    while True:
-        btn_keep = plt.text(1.1, 0.9, 'keep ⇨', size=12, ha="right", va="top",
-                            transform=ax1.transAxes,
-                            bbox=dict(boxstyle="square", ec='k', fc='w'))
-        btn_skip = plt.text(-0.1, 0.9, '⇦ skip', size=12, ha="left", va="top",
-                            transform=ax1.transAxes,
-                            bbox=dict(boxstyle="square", ec='k', fc='w'))
-        btn_esc = plt.text(0.5, 0, '<esc> to quit', size=12, ha="center", va="top",
-                           transform=ax1.transAxes,
-                           bbox=dict(boxstyle="square", ec='k', fc='w'))
-        plt.draw()
-        fig.canvas.mpl_connect('key_press_event', press)
-        plt.waitforbuttonpress()
-        # after button is pressed, remove the buttons
-        btn_skip.remove()
-        btn_keep.remove()
-        btn_esc.remove()
-
-        # keep/skip image according to the pressed key, 'escape' to break the loop
-        if key_event.get('pressed') == 'right':
-            skip_image = False
-            break
-        elif key_event.get('pressed') == 'left':
-            skip_image = True
-            break
-        elif key_event.get('pressed') == 'escape':
-            plt.close()
-            raise StopIteration('User cancelled checking shoreline detection')
-        else:
+    skip_image = False
+    if not ref:
+        while True:
+            btn_keep = plt.text(1.1, 0.9, 'keep ⇨', size=12, ha="right", va="top",
+                                transform=ax1.transAxes,
+                                bbox=dict(boxstyle="square", ec='k', fc='w'))
+            btn_skip = plt.text(-0.1, 0.9, '⇦ skip', size=12, ha="left", va="top",
+                                transform=ax1.transAxes,
+                                bbox=dict(boxstyle="square", ec='k', fc='w'))
+            btn_esc = plt.text(0.5, 0, '<esc> to quit', size=12, ha="center", va="top",
+                               transform=ax1.transAxes,
+                               bbox=dict(boxstyle="square", ec='k', fc='w'))
+            plt.draw()
+            fig.canvas.mpl_connect('key_press_event', press)
             plt.waitforbuttonpress()
+            # after button is pressed, remove the buttons
+            btn_skip.remove()
+            btn_keep.remove()
+            btn_esc.remove()
 
-    plt.close()
+            # keep/skip image according to the pressed key, 'escape' to break the loop
+            if key_event.get('pressed') == 'right':
+                skip_image = False
+                break
+            elif key_event.get('pressed') == 'left':
+                skip_image = True
+                break
+            elif key_event.get('pressed') == 'escape':
+                plt.close()
+                raise StopIteration('User cancelled checking shoreline detection')
+            else:
+                plt.waitforbuttonpress()
+
+        plt.close()
     
      # if save_figure is True, save a .jpg under /jpg_files/detection
     if not skip_image:
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
         fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'), dpi=150)
 
-    if inputs['reference_threshold']:
+    if not ref:
         printProgress('shoreline extracted')
 
     return shoreline, t_mndwi
