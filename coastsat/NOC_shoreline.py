@@ -17,6 +17,11 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
     pansharpen = inputs['pansharpen']
+    if pansharpen:
+        shoreline_folder = 'pan'
+    else:
+        shoreline_fiolder = 'standard'
+
 
     band_dict = settings['bands'][sat_name]
     first_key = next(iter(band_dict))
@@ -30,8 +35,6 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     for SWIR_index, band in enumerate(bands_20m):
         if settings['SWIR'] == band:
             break
-
-    printProgress(f'extracting shoreline ')
 
     # create a subfolder to store the .jpg images showing the detection
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
@@ -63,6 +66,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
             NOC_preprocess.preprocess_single(file_paths, sat_name, settings['cloud_mask_issue'],
                                              pansharpen=pansharpen, SWIR_index=SWIR_index)
+    printProgress('image loaded')
 
     # get image spatial reference system (epsg code) from metadata dict
     image_epsg = int(metadata['epsg'])
@@ -105,7 +109,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     if ~gdf.empty:
         gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
         # save GEOJSON layer to file
-        gdf.to_file(os.path.join(inputs['median_dir_path'],
+        gdf.to_file(os.path.join(inputs['median_dir_path'],shoreline_folder,
                                  file_string),
                     driver='GeoJSON', encoding='utf-8')
 
@@ -445,7 +449,7 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         if ~gdf.empty:
             gdf.crs = {'init':'epsg:'+str(settings['output_epsg'])} # set layer projection
             # save GEOJSON layer to file
-            gdf.to_file(os.path.join(inputs['median_dir_path'],
+            gdf.to_file(os.path.join(inputs['median_dir_path'], 'sar',
                                      file_string),
                                      driver='GeoJSON', encoding='utf-8')
 
