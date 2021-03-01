@@ -634,7 +634,6 @@ def find_reference_threshold(settings):
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
-    sigma = inputs['sigma']
 
     ref_date_start = date.fromisoformat(inputs['dates'][0])
     ref_date_end = date.fromisoformat(inputs['dates'][1])
@@ -647,7 +646,8 @@ def find_reference_threshold(settings):
         os.makedirs(jpeg_file_path)
 
     if sat_name == 'S1':
-
+        
+        sigma = inputs['sigma']
         polarisation = inputs['polarisation']
         if polarisation == 'VV':
             polarisation_band_index = 0
