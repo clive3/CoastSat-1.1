@@ -38,7 +38,7 @@ def load_reference_shoreline_median(inputs, ref=False):
 
 
 def preprocess_single(file_path, satname, cloud_mask_issue,
-                      pansharpen=False, SWIR_index=5):
+                      pansharpen=False, SWIR_band='', SWIR_index=5):
 
     # read 10m bands (R,G,B,NIR)
     file_path_10 = file_path[0]
@@ -61,29 +61,23 @@ def preprocess_single(file_path, satname, cloud_mask_issue,
     nrows = image_10.shape[0]
     ncols = image_10.shape[1]
 
-    # read 20m band (SWIR1)
+    # read 20m bands
     file_path_20 = file_path[1]
 
     data = gdal.Open(file_path_20, gdal.GA_ReadOnly)
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
     image_20 = np.stack(bands, 2)
     image_20 = image_20 / 10000  # TOA scaled to 10000
-
+    image_20m = transform.resize(image_20, (nrows, ncols),
+                                 order=1, preserve_range=True,
+                                 mode='constant')
     if pansharpen:
-        printProgress('pansharpening SWIR2')
+        printProgress(f'pansharpening SWIR using: {SWIR_band}')
 
-        image_20m = transform.resize(image_20, (nrows, ncols),
-                                      order=1, preserve_range=True,
-                                      mode='constant')
         image_NIR = image_10[:,:,3]
-        image_20m_ps = pansharpen_SWIR(image_20m, image_NIR)
-        image_SWIR = image_20m_ps[:, :, 5]
-    else:
-        image_SWIR = image_20[:, :, 5]
+        image_20m = pansharpen_SWIR(image_20m, image_NIR)
 
-    # resize the image using bilinear interpolation (order 1)
-    image_SWIR = transform.resize(image_SWIR, (nrows, ncols), order=1, preserve_range=True,
-                               mode='constant')
+    image_SWIR = image_20m[:, :, SWIR_index]
     image_SWIR = np.expand_dims(image_SWIR, axis=2)
 
     # append down-sampled SWIR band to the other 10m bands

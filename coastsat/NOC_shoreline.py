@@ -18,6 +18,17 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
 
+    band_dict = settings['bands'][sat_name]
+    first_key = next(iter(band_dict))
+    pixel_size = band_dict[first_key][1]
+    bands_20m = band_dict['20m'][0]
+    for SWIR_index, SWIR_band in enumerate(bands_20m):
+        if settings['SWIR'] == SWIR_band:
+            break
+
+    file_names = metadata['file_names']
+    models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
+
     pansharpen = inputs['pansharpen']
     if pansharpen:
         shoreline_folder = 'pan'
@@ -31,19 +42,6 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     shoreline_dir_path = os.path.join(median_dir_path, 'shorelines', shoreline_folder)
     if not os.path.exists(shoreline_dir_path):
         os.makedirs(shoreline_dir_path)
-
-    band_dict = settings['bands'][sat_name]
-    first_key = next(iter(band_dict))
-    pixel_size = band_dict[first_key][1]
-
-    file_names = metadata['file_names']
-
-    models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
-
-    bands_20m = band_dict['20m'][0]
-    for SWIR_index, band in enumerate(bands_20m):
-        if settings['SWIR'] == band:
-            break
 
     # create a subfolder to store the .jpg images showing the detection
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
@@ -75,7 +73,9 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     # preprocess image (cloud mask + pansharpening/downsampling)
     image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
             NOC_preprocess.preprocess_single(file_paths, sat_name, settings['cloud_mask_issue'],
-                                             pansharpen=pansharpen, SWIR_index=SWIR_index)
+                                             pansharpen=pansharpen,
+                                             SWIR_band=SWIR_band,
+                                             SWIR_index=SWIR_index)
 
     # get image spatial reference system (epsg code) from metadata dict
     image_epsg = int(metadata['epsg'])
@@ -667,14 +667,16 @@ def find_reference_threshold(settings):
         band_dict = settings['bands'][sat_name]
         first_key = next(iter(band_dict))
         pixel_size = band_dict[first_key][1]
+        bands_20m = band_dict['20m'][0]
+        for SWIR_index, SWIR_band in enumerate(bands_20m):
+            if settings['SWIR'] == SWIR_band:
+                break
+
         cloud_mask_issue = settings['cloud_mask_issue']
         classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
         min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
         pansharpen = inputs['pansharpen']
-        bands_20m = band_dict['20m']
-        for SWIR_index, band in enumerate(bands_20m):
-            if settings['SWIR'] == band:
-                break
+
 
     with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
         metadata_dict = pickle.load(f)
@@ -729,6 +731,7 @@ def find_reference_threshold(settings):
             optical_image, _, cloud_mask, image_extra, image_QA, image_nodata = \
                 NOC_preprocess.preprocess_single(file_paths, sat_name, cloud_mask_issue,
                                                  pansharpen=pansharpen,
+                                                 SWIR_band=SWIR_band,
                                                  SWIR_index=SWIR_index)
             threshold_images[:, :, :, file_index] = optical_image
 
