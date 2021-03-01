@@ -1,4 +1,3 @@
-from scipy.ndimage import gaussian_filter
 from datetime import date
 
 from coastsat.SDS_shoreline import *
@@ -480,21 +479,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
         printError(f'select SAR band correctly: {polarisation}')
 
 
-    if ref:
-        image_pol = np.copy(sar_image)
-        image_pol = gaussian_filter(image_pol, sigma=inputs['sigma'], mode='reflect')
-        print(f'@@@  image_pol {sar_image.shape}')
-        vec_shape = (sar_image.shape[0] * sar_image.shape[1] * sar_image.shape[2])
-        vec_pol = sar_image.reshape(vec_shape)
-        print(f'@@@  vec_pol {vec_pol.shape}')
-        print(f'@@@  image_pol {sar_image.shape}')
-        image_pol = np.mean(sar_image, axis=2)
-        print(f'@@@  image_pol {image_pol.shape}')
-    else:
-        image_pol = np.copy(sar_image[:,:,band_index])
-        # and the vectors needed for the histogram
-        vec_shape = (sar_image.shape[0] * sar_image.shape[1])
-        vec_pol = image_pol.reshape(vec_shape)
+    image_pol = np.copy(sar_image[:,:,band_index])
+    # and the vectors needed for the histogram
+    vec_shape = (sar_image.shape[0] * sar_image.shape[1])
+    vec_pol = image_pol.reshape(vec_shape)
 
     # create figure
     if plt.get_fignums():
@@ -544,7 +532,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + bin_width, bin_width)
     ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
-    t_sar = filters.threshold_otsu(image_pol)
+    if reference_threshold == 0:
+        t_sar = filters.threshold_otsu(image_pol)
+    else:
+        t_sar = reference_threshold
     contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
@@ -566,8 +557,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
 
     t_line = ax4.axvline(x=t_sar, ls='--', c='k', lw=1.5, label='threshold')
     thresh_label = ax4.text(t_sar + bin_width, 0.25, str(f'{t_sar:4.2f}'), rotation=90)
-    if not reference_threshold: reference_threshold = t_sar
-    ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {reference_threshold:4.2f}')
+    ax4.axvline(x=t_sar, ls='--', c='r', lw=1.5, label=f'ref threshold {t_sar:4.2f}')
 
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
@@ -610,7 +600,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
     fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
                              '_E' + data_end + '.jpg'), dpi=150)
-
 
     return shoreline, t_sar
 
@@ -678,9 +667,10 @@ def find_reference_threshold(settings):
         if meta_date_start >= ref_date_start and meta_date_end <= ref_date_end:
 
             if sat_name == 'S1':
-                file_path_list.append(os.path.join(median_dir_path, sat_name, file_name))
+                file_path = os.path.join(median_dir_path, sat_name, file_name)
+                file_path_list.append(file_path)
 
-                sar_image, georef = NOC_preprocess.preprocess_sar(file_name)
+                sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
                 image_shape = (sar_image.shape[0], sar_image.shape[1], len(file_path_list))
             else:
                 file_paths = []
@@ -689,7 +679,7 @@ def find_reference_threshold(settings):
                                                    band_key, file_name + '_' + band_key + '.tif'))
                 file_path_list.append(file_paths)
 
-                optical_image, georef = NOC_preprocess.preprocess_sar(file_name)
+                optical_image, georef = NOC_preprocess.preprocess_sar(file_paths[0])
                 image_shape = (optical_image.shape[0], optical_image.shape[1],
                                optical_image.shape[2], len(file_path_list))
 
@@ -742,8 +732,10 @@ def find_reference_threshold(settings):
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
-
-    printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
+    if sat_name == 'S1':
+        printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:3.2f}')
+    else:
+        printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
 
     return reference_threshold
 
