@@ -626,7 +626,7 @@ def find_reference_threshold(settings):
         os.makedirs(jpeg_file_path)
 
     if sat_name == 'S1':
-        
+
         polarisation = inputs['polarisation']
         if polarisation == 'VV':
             polarisation_band_index = 0
@@ -688,7 +688,7 @@ def find_reference_threshold(settings):
 
                 optical_image, georef = NOC_preprocess.preprocess_sar(file_paths[0])
                 image_shape = (optical_image.shape[0], optical_image.shape[1],
-                               optical_image.shape[2], len(file_path_list))
+                               optical_image.shape[2]+1, len(file_path_list))
 
     threshold_images = np.ndarray(image_shape)
     for file_index, file_paths in enumerate(file_path_list):
