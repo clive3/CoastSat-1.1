@@ -22,6 +22,7 @@ def retrieve_median_sar(inputs):
     if not os.path.exists(sar_dir_path):
         os.makedirs(sar_dir_path)
 
+
     printProgress('connecting to GEE')
 
     # initialise connection with GEE server

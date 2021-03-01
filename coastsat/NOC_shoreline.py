@@ -20,8 +20,11 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     if pansharpen:
         shoreline_folder = 'pan'
     else:
-        shoreline_fiolder = 'standard'
+        shoreline_folder = 'standard'
 
+    shoreline_dir_path = os.path.join(median_dir_path, 'shorelines', shoreline_folder)
+    if not os.path.exists(shoreline_dir_path):
+        os.makedirs(shoreline_dir_path)
 
     band_dict = settings['bands'][sat_name]
     first_key = next(iter(band_dict))
@@ -62,11 +65,11 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     # convert settings['min_beach_area'] from  metres to pixels
     min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
 
+    printProgress('image loaded')
     # preprocess image (cloud mask + pansharpening/downsampling)
     image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
             NOC_preprocess.preprocess_single(file_paths, sat_name, settings['cloud_mask_issue'],
                                              pansharpen=pansharpen, SWIR_index=SWIR_index)
-    printProgress('image loaded')
 
     # get image spatial reference system (epsg code) from metadata dict
     image_epsg = int(metadata['epsg'])
@@ -99,23 +102,27 @@ def extract_shoreline_optical(metadata, settings, ref=False):
                                                        min_beach_area_pixels, classifier)
 
     # find the shoreline interactively
-    shoreline, _ = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
+    shoreline, _, skip_image = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
                                             mndwi_buffer, image_epsg, georef,
                                             settings, sat_name, ref=ref)
 
-    gdf = NOC_tools.output_to_gdf(shoreline, metadata)
-    file_string = f'{site_name}_shoreline_{sat_name}' + \
-                  f'_S{date_start}_E{date_end}.geojson'
-    if ~gdf.empty:
-        gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
-        # save GEOJSON layer to file
-        gdf.to_file(os.path.join(inputs['median_dir_path'],shoreline_folder,
-                                 file_string),
-                    driver='GeoJSON', encoding='utf-8')
+    if not skip_image:
+        gdf = NOC_tools.output_to_gdf(shoreline, metadata)
+        file_string = f'{site_name}_shoreline_{sat_name}' + \
+                      f'_S{date_start}_E{date_end}.geojson'
+        if ~gdf.empty:
+            gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
+            # save GEOJSON layer to file
+            gdf.to_file(os.path.join(inputs['median_dir_path'],'shorelines', shoreline_folder,
+                                     file_string),
+                        driver='GeoJSON', encoding='utf-8')
 
-        printSuccess('shoreline saved')
+            printSuccess('shoreline saved')
+        else:
+            printWarning('no shorelines to be seen ...')
     else:
-        printWarning('no shorelines to be seen ...')
+        printProgress('shoreline skipped')
+        printProgress('')
 
     # close figure window if still open
     if plt.get_fignums():
@@ -347,10 +354,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
         fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'), dpi=150)
 
-    if not ref:
+    if not ref and not skip_image:
         printProgress('shoreline extracted')
 
-    return shoreline, t_mndwi
+    return shoreline, t_mndwi, skip_image
 
 
 def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buffer):
@@ -421,6 +428,11 @@ def extract_shoreline_sar(metadata, settings, ref=False):
     if not os.path.exists(jpeg_file_path):
         os.makedirs(jpeg_file_path)
 
+    # create subdir structure to store the different polarisations
+    shoreline_dir_path = os.path.join(median_dir_path, 'shorelines', 'sar')
+    if not os.path.exists(shoreline_dir_path):
+        os.makedirs(shoreline_dir_path)
+
     printProgress('mapping shoreline')
 
     image_epsg = int(metadata['epsg'])
@@ -449,7 +461,7 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         if ~gdf.empty:
             gdf.crs = {'init':'epsg:'+str(settings['output_epsg'])} # set layer projection
             # save GEOJSON layer to file
-            gdf.to_file(os.path.join(inputs['median_dir_path'], 'sar',
+            gdf.to_file(os.path.join(inputs['median_dir_path'], 'shorelines', 'sar',
                                      file_string),
                                      driver='GeoJSON', encoding='utf-8')
 
@@ -713,8 +725,6 @@ def find_reference_threshold(settings):
                                                  SWIR_index=SWIR_index)
             threshold_images[:, :, :, file_index] = optical_image
 
-
-
     # calculate a buffer around the reference shoreline if it has already been generated
     buffer_shape = (threshold_images.shape[0], threshold_images.shape[1])
     image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
@@ -735,7 +745,7 @@ def find_reference_threshold(settings):
         _, image_labels = NOC_classify.classify_image_NN(threshold_images, classes, threshold_cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
-        reference_shoreline, reference_threshold = \
+        reference_shoreline, reference_threshold, _ = \
                     adjust_detection_optical(threshold_images, threshold_cloud_mask, image_labels,
                                              image_ref_buffer, mndwi_buffer, image_epsg, georef,
                                              settings, sat_name, ref=True)
