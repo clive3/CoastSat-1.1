@@ -1,6 +1,6 @@
 from coastsat.SDS_preprocess import *
 
-from utils.print_utils import printWarning, printProgress
+from utils.print_utils import printProgress
 
 
 def preprocess_sar(file_name):
@@ -13,35 +13,8 @@ def preprocess_sar(file_name):
     return sar_stack, georef
 
 
-def load_reference_shoreline(inputs, ref=False):
-
-    site_name = inputs['site_name']
-    if ref:
-        sat_name = 'S1'
-    else:
-        sat_name = inputs['sat_name']
-    median_dir_path = inputs['median_dir_path']
-
-    # check if reference shoreline already exists in the corresponding folder
-    ref_shoreline_file_name = site_name + '_reference_shoreline_' + sat_name +'.pkl'
-    # if it exist, load it and return it
-    if ref_shoreline_file_name in os.listdir(median_dir_path):
-
-        with open(os.path.join(median_dir_path, ref_shoreline_file_name), 'rb') as f:
-            ref_shoreline = pickle.load(f)
-
-            print(f'@@@ ref_shoreline count {np.count_nonzero(ref_shoreline)}')
-            print(f'@@@ ref_shoreline shape {ref_shoreline.shape}')
-
-        printProgress('reference shoreline loaded')
-        return ref_shoreline
-    else:
-        printWarning('no reference shoreline found')
-        return np.zeros(1)
-
-
-def preprocess_single(file_path, satname, cloud_mask_issue,
-                      pansharpen=False, SWIR_band='', SWIR_index=5):
+def preprocess_optical(file_path, satname, cloud_mask_issue,
+                       pansharpen=False, SWIR_band='', SWIR_index=5):
 
     # read 10m bands (R,G,B,NIR)
     file_path_10 = file_path[0]
@@ -124,7 +97,6 @@ def preprocess_single(file_path, satname, cloud_mask_issue,
     image_extra = image_20
 
     return image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata
-
 
 def pansharpen_SWIR(image_20m, image_NIR):
     

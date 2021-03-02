@@ -1,3 +1,7 @@
+import os
+import pickle
+
+import numpy
 from skimage.filters import gaussian
 from datetime import date
 
@@ -67,10 +71,10 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     printProgress('image loaded')
     # preprocess image (cloud mask + pansharpening/downsampling)
     image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-            NOC_preprocess.preprocess_single(file_paths, sat_name, settings['cloud_mask_issue'],
-                                             pansharpen=pansharpen,
-                                             SWIR_band=SWIR_band,
-                                             SWIR_index=SWIR_index)
+            NOC_preprocess.preprocess_optical(file_paths, sat_name, settings['cloud_mask_issue'],
+                                              pansharpen=pansharpen,
+                                              SWIR_band=SWIR_band,
+                                              SWIR_index=SWIR_index)
 
     # get image spatial reference system (epsg code) from metadata dict
     image_epsg = int(metadata['epsg'])
@@ -757,10 +761,10 @@ def find_reference_threshold(settings):
         else:
 
             optical_image, _, _, _, _, _ = \
-                NOC_preprocess.preprocess_single(file_paths, sat_name, cloud_mask_issue,
-                                                 pansharpen=pansharpen,
-                                                 SWIR_band=SWIR_band,
-                                                 SWIR_index=SWIR_index)
+                NOC_preprocess.preprocess_optical(file_paths, sat_name, cloud_mask_issue,
+                                                  pansharpen=pansharpen,
+                                                  SWIR_band=SWIR_band,
+                                                  SWIR_index=SWIR_index)
             threshold_images[:, :, :, file_index] = optical_image
 
     # calculate a buffer around the reference shoreline if it has already been generated
@@ -775,11 +779,10 @@ def find_reference_threshold(settings):
 
     else:
         threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
-        
-        reference_shoreline = NOC_preprocess.load_reference_shoreline(inputs,ref=True)
+
+        reference_shoreline = load_reference_shoreline(inputs, ref=True)
         settings['reference_shoreline'] = reference_shoreline
-        mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef,
-                                           image_epsg, settings)
+        mndwi_buffer = create_mndwi_buffer(buffer_shape, georef, image_epsg, settings)
         image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                    pixel_size, settings)
 
@@ -836,10 +839,10 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     return shoreline
 
 
-def create_mndwi_buffer(reference_shoreline, im_shape, georef, image_epsg, settings):
+def create_mndwi_buffer(im_shape, georef, image_epsg, settings):
 
     # convert reference shoreline to pixel coordinates
-    ref_sl = reference_shoreline
+    ref_sl = settings['reference_shoreline']
 
     ref_sl_conv = SDS_tools.convert_epsg(ref_sl, settings['output_epsg'],image_epsg)[:,:-1]
     ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
@@ -863,3 +866,27 @@ def create_mndwi_buffer(reference_shoreline, im_shape, georef, image_epsg, setti
     im_buffer = morphology.binary_dilation(im_binary, se)
 
     return im_buffer
+
+
+def load_reference_shoreline(inputs, ref=False):
+
+    site_name = inputs['site_name']
+    if ref:
+        sat_name = 'S1'
+    else:
+        sat_name = inputs['sat_name']
+    median_dir_path = inputs['median_dir_path']
+
+    # check if reference shoreline already exists in the corresponding folder
+    ref_shoreline_file_name = site_name + '_reference_shoreline_' + sat_name +'.pkl'
+    # if it exist, load it and return it
+    if ref_shoreline_file_name in os.listdir(median_dir_path):
+
+        with open(os.path.join(median_dir_path, ref_shoreline_file_name), 'rb') as f:
+            ref_shoreline = pickle.load(f)
+
+        printProgress('reference shoreline loaded')
+        return ref_shoreline
+    else:
+        printWarning('no reference shoreline found')
+        return np.zeros(1)
