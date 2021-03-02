@@ -134,10 +134,12 @@ def extract_shoreline_optical(metadata, settings, ref=False):
 
 
 def adjust_detection_optical(image_ms, cloud_mask, image_labels,
-                             image_ref_buffer, mndwi_buffer, image_epsg,
-                             georef,  settings, ref=False):
+                             image_ref_buffer, mndwi_buffer, settings, ref=False):
 
     inputs = settings['inputs']
+    image_epsg = settings['image_epsg']
+    georef = settings['georef']
+
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
     date_start = inputs['dates'][0]
@@ -427,6 +429,8 @@ def extract_shoreline_sar(metadata, settings, ref=False):
     date_end = inputs['dates'][1]
 
     file_names = metadata['file_names']
+    settings['image_epsg'] = int(metadata['epsg'])
+    settings['pixel_size'] = pixel_size
 
     # create a folder to store the .jpg images showing the detection
     jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
@@ -440,8 +444,6 @@ def extract_shoreline_sar(metadata, settings, ref=False):
 
     printProgress('mapping shoreline')
 
-    image_epsg = int(metadata['epsg'])
-
     for file_index, file_name in enumerate(file_names):
 
         file_path = os.path.join(median_dir_path, sat_name, file_name)
@@ -454,11 +456,9 @@ def extract_shoreline_sar(metadata, settings, ref=False):
 
         # calculate a buffer around the reference shoreline if it has already been generated
         buffer_shape = (sar_image.shape[0], sar_image.shape[1])
-        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
-                                                    pixel_size, settings)
+        image_ref_buffer = create_shoreline_buffer(buffer_shape, settings)
 
-        shoreline, _, _ = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg,
-                                          georef, settings, ref=ref)
+        shoreline, _, _ = adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=ref)
 
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
         file_string = f'{site_name}_shoreline_{inputs["polarisation"]}' + \
@@ -479,9 +479,17 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         plt.close()
 
 
-def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settings, ref=False):
+def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
 
     inputs = settings['inputs']
+    image_epsg = settings['image_epsg']
+    output_epsg = settings['output_epsg']
+    georef = settings['georef']
+    if ref:
+        reference_threshold = 0
+    else:
+        reference_threshold = inputs['reference_threshold']
+
     sat_name = inputs['sat_name']
     polarisation = inputs['polarisation']
     date_start = inputs['dates'][0]
@@ -554,20 +562,22 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + bin_width, bin_width)
     ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
-    if ref:
-        t_sar = filters.threshold_otsu(image_pol)
-    else:
-        t_sar = inputs['reference_threshold']
+#    if ref:
+#        t_sar = filters.threshold_otsu(image_pol)
+#    else:
+#        t_sar = inputs['reference_threshold']
+
+    t_sar = filters.threshold_otsu(image_pol)
 
     contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
-    shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
+    shoreline = process_sar_shoreline(contours_sar, settings)
 
     # convert shoreline to pixels
     if len(shoreline) > 0:
         sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
-                                                                    settings['output_epsg'],
+                                                                    output_epsg,
                                                                     image_epsg)[:, [0, 1]], georef)
     else:
         printWarning('no shoreline yet')
@@ -580,7 +590,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
 
     t_line = ax4.axvline(x=t_sar, ls='--', c='k', lw=1.5, label='threshold')
     thresh_label = ax4.text(t_sar + bin_width, 0.25, str(f'{t_sar:4.2f}'), rotation=90)
-    ax4.axvline(x=t_sar, ls='--', c='r', lw=1.5, label=f'ref threshold {t_sar:4.2f}')
+    ax4.axvline(x=reference_threshold, ls='--', c='r', lw=1.5, label=f'ref threshold {t_sar:4.2f}')
 
     ax4.legend(loc=1)
     plt.draw()  # to update the plot
@@ -602,11 +612,11 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
             # map contours with new threshold
             contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
             # process the water contours into a shoreline
-            shoreline = process_sar_shoreline(contours_sar, georef, image_epsg, settings)
+            shoreline = process_sar_shoreline(contours_sar, settings)
 
             if len(shoreline) > 0:
                 sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
-                                                                            settings['output_epsg'],
+                                                                            output_epsg,
                                                                             image_epsg)[:, [0, 1]], georef)
             else:
                 sl_pix = np.array([[np.nan, np.nan], [np.nan, np.nan]])
@@ -703,6 +713,7 @@ def find_reference_threshold(settings):
         band_dict = settings['bands'][sat_name]
         first_key = next(iter(band_dict))
         pixel_size = band_dict[first_key][1]
+        settings['pixel_size'] = pixel_size
         bands_20m = band_dict['20m'][0]
         for SWIR_index, SWIR_band in enumerate(bands_20m):
             if settings['SWIR'] == SWIR_band:
@@ -719,6 +730,7 @@ def find_reference_threshold(settings):
     metadata_sat = metadata_dict[sat_name]
     file_names = metadata_sat['file_names']
     image_epsg = int(metadata_sat['epsg'][0])
+    settings['image_epsg'] = image_epsg
 
     printProgress('metadata loaded')
 
@@ -749,6 +761,7 @@ def find_reference_threshold(settings):
                 optical_image, georef = NOC_preprocess.preprocess_sar(file_paths[0])
                 image_shape = (optical_image.shape[0], optical_image.shape[1],
                                optical_image.shape[2]+1, len(file_path_list))
+        settings['georef'] = georef
 
     threshold_images = np.ndarray(image_shape)
     for file_index, file_paths in enumerate(file_path_list):
@@ -774,7 +787,7 @@ def find_reference_threshold(settings):
         image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
         threshold_images = gaussian(threshold_images, sigma=sigma, mode='reflect')
         reference_shoreline, reference_threshold, skip_image = adjust_detection_sar(threshold_images, image_ref_buffer,
-                                                                        image_epsg, georef, settings,
+                                                                        settings,
                                                                         ref=True)
 
     else:
@@ -782,9 +795,8 @@ def find_reference_threshold(settings):
 
         reference_shoreline = load_reference_shoreline(inputs, ref=True)
         settings['reference_shoreline'] = reference_shoreline
-        mndwi_buffer = create_mndwi_buffer(buffer_shape, georef, image_epsg, settings)
-        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
-                                                   pixel_size, settings)
+        mndwi_buffer = create_mndwi_buffer(buffer_shape, settings)
+        image_ref_buffer = create_shoreline_buffer(buffer_shape, settings)
 
         threshold_images = np.mean(threshold_images, axis=3)
 
@@ -814,7 +826,10 @@ def find_reference_threshold(settings):
     return reference_threshold
 
 
-def process_sar_shoreline(contours, georef, image_epsg, settings):
+def process_sar_shoreline(contours, settings):
+
+    image_epsg = settings['image_epsg']
+    georef = settings['georef']
 
     # convert pixel coordinates to world coordinates
     contours_world = SDS_tools.convert_pix2world(contours, georef)
@@ -839,10 +854,49 @@ def process_sar_shoreline(contours, georef, image_epsg, settings):
     return shoreline
 
 
-def create_mndwi_buffer(im_shape, georef, image_epsg, settings):
+def create_shoreline_buffer(im_shape, settings):
+
+    image_epsg = settings['image_epsg']
+    georef = settings['georef']
+    pixel_size = settings['pixel_size']
+
+    # initialise the image buffer
+    im_buffer = np.ones(im_shape).astype(bool)
+
+    if 'reference_shoreline' in settings.keys():
+
+        # convert reference shoreline to pixel coordinates
+        ref_sl = settings['reference_shoreline']
+
+        ref_sl_conv = SDS_tools.convert_epsg(ref_sl, settings['output_epsg'],image_epsg)[:,:-1]
+        ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
+        ref_sl_pix_rounded = np.round(ref_sl_pix).astype(int)
+
+        # make sure that the pixel coordinates of the reference shoreline are inside the image
+        idx_row = np.logical_and(ref_sl_pix_rounded[:,0] > 0, ref_sl_pix_rounded[:,0] < im_shape[1])
+        idx_col = np.logical_and(ref_sl_pix_rounded[:,1] > 0, ref_sl_pix_rounded[:,1] < im_shape[0])
+        idx_inside = np.logical_and(idx_row, idx_col)
+        ref_sl_pix_rounded = ref_sl_pix_rounded[idx_inside,:]
+
+        # create binary image of the reference shoreline (1 where the shoreline is 0 otherwise)
+        im_binary = np.zeros(im_shape)
+        for j in range(len(ref_sl_pix_rounded)):
+            im_binary[ref_sl_pix_rounded[j,1], ref_sl_pix_rounded[j,0]] = 1
+        im_binary = im_binary.astype(bool)
+
+        # dilate the binary image to create a buffer around the reference shoreline
+        max_dist_ref_pixels = np.ceil(settings['max_dist_ref']/pixel_size)
+        se = morphology.disk(max_dist_ref_pixels)
+        im_buffer = morphology.binary_dilation(im_binary, se)
+
+    return im_buffer
+
+def create_mndwi_buffer(im_shape, settings):
 
     # convert reference shoreline to pixel coordinates
     ref_sl = settings['reference_shoreline']
+    image_epsg = settings['image_epsg']
+    georef = settings['georef']
 
     ref_sl_conv = SDS_tools.convert_epsg(ref_sl, settings['output_epsg'],image_epsg)[:,:-1]
     ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
