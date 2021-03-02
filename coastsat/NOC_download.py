@@ -4,12 +4,17 @@ from utils.print_utils import printProgress, printError, printSuccess
 
 
 def retrieve_median_sar(inputs):
+    
+    # initialise connection with GEE server
+    ee.Initialize()
+    printProgress('connected to GEE')
 
     pixel_size = inputs['pixel_size']
     sat_name = inputs['sat_name']
     median_dir_path = inputs['median_dir_path']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
+    polygon = ee.Geometry.Polygon(inputs['polygon'])
 
     if date_start > date_end:
         printError('you cannot have end date before the start date')
@@ -26,13 +31,8 @@ def retrieve_median_sar(inputs):
     if not os.path.exists(meta_dir_path):
         os.makedirs(meta_dir_path)
 
-    printProgress('connecting to GEE')
-
-    # initialise connection with GEE server
-    ee.Initialize()
-
     median_images_collection = ee.ImageCollection("COPERNICUS/S1_GRD") \
-                   .filterBounds(ee.Geometry.Polygon(inputs['polygon'])) \
+                   .filterBounds(polygon) \
                    .filterDate(date_start, date_end) \
                    .filter(ee.Filter.eq('instrumentMode', 'IW'))
     median_images_list = median_images_collection.toList(500)
