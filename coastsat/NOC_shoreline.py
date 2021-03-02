@@ -682,7 +682,6 @@ def find_reference_threshold(settings):
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
     site_name = inputs['site_name']
-
     ref_date_start = date.fromisoformat(inputs['dates'][0])
     ref_date_end = date.fromisoformat(inputs['dates'][1])
 
