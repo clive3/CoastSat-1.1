@@ -81,6 +81,9 @@ def retrieve_median_sar(inputs):
 
 def retrieve_median_optical(settings):
 
+    ee.Initialize()
+    printProgress('connected to GEE')
+    
     inputs = settings['inputs']
 
     sat_name = inputs['sat_name']
@@ -102,9 +105,6 @@ def retrieve_median_optical(settings):
         GEE_collection = 'LANDSAT/LC08/C01/T1_TOA'
     elif sat_name == 'S2':
         GEE_collection = 'COPERNICUS/S2'
-
-    printProgress('connecting to GEE')
-    ee.Initialize()
 
     median_image, number_images = get_median_image_optical(GEE_collection, settings)
 
