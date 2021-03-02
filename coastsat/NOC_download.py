@@ -83,7 +83,7 @@ def retrieve_median_optical(settings):
 
     ee.Initialize()
     printProgress('connected to GEE')
-    
+
     inputs = settings['inputs']
 
     sat_name = inputs['sat_name']

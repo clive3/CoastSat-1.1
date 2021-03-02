@@ -68,7 +68,7 @@ def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
     image_60 = np.stack(bands, 2)
     image_QA = image_60[:, :, 0]
-    cloud_mask = create_cloud_mask(image_QA, satname, cloud_mask_issue)
+    cloud_mask = create_cloud_mask(image_QA, sat_name, cloud_mask_issue)
     # resize the cloud mask using nearest neighbour interpolation (order 0)
     cloud_mask = transform.resize(cloud_mask, (nrows, ncols), order=0, preserve_range=True,
                                   mode='constant')
