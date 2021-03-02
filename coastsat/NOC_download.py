@@ -107,11 +107,7 @@ def retrieve_median_optical(settings):
     printProgress('connecting to GEE')
     ee.Initialize()
 
-    median_image, number_images = get_median_image_optical(GEE_collection,
-                                                   dates,
-                                                   ee.Geometry.Polygon(polygon),
-                                                   sat_name,
-                                                   settings)
+    median_image, number_images = get_median_image_optical(GEE_collection, settings)
 
     printProgress(f'found {number_images} images')
 
@@ -185,21 +181,14 @@ def retrieve_median_optical(settings):
 
     return metadata_dict
 
-def get_median_image_optical(collection, dates, polygon, sat_name, settings):
-    """ Selection of median from a collection of images in the Earth Engine library
-    See also: https://developers.google.com/earth-engine/reducers_image_collection
+def get_median_image_optical(collection, settings):
 
-    Parameters:
-        collection (): name of the collection
-        dates (['YYYY-MT-DY','YYYY-MT-DY']): must be inside the available data
-        polygon (ee.geometry.Geometry): polygon of interest
-        sat_name: Satellite inital; 'L7', 'L8' or 'S2'
-        settings: Use of 'LCloudScore' - Mean cloud score value in image. Value
-        between 1-100
+    inputs = settings['inputs']
 
-    Returns:
-        image_median (ee.image.Image)
-     """
+    sat_name = inputs['sat_name']
+    polygon = ee.Geometry.Polygon(inputs['polygon'])
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
 
     bands_list = []
     bands_dict = settings['bands'][sat_name]
@@ -235,7 +224,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
 
     if sat_name == 'L5':
         ## Filter by time range and location
-        collection = (collect.filterDate(dates[0], dates[1])
+        collection = (collect.filterDate(date_start, date_end)
                       .filterBounds(polygon))
 
         # Apply Cloud Score layer to each image, then filter collection
@@ -257,7 +246,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
             # Add Landsat 7 to Collection
             collect = ee.ImageCollection('LANDSAT/LE07/C01/T1_TOA')
             ## Filter by time range and location
-            L7_collection = (collect.filterDate(dates[0], dates[1])
+            L7_collection = (collect.filterDate(date_start, date_end)
                              .filterBounds(polygon))
 
 
@@ -290,7 +279,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
 
     if sat_name == 'L7':
         ## Filter by time range and location
-        collection = (collect.filterDate(dates[0], dates[1])
+        collection = (collect.filterDate(date_start, date_end)
                       .filterBounds(polygon))
 
         # Apply Cloud Score layer to each image, then filter collection
@@ -311,7 +300,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
             # Add Landsat 7 to Collection
             collect = ee.ImageCollection('LANDSAT/LT05/C01/T1_TOA')
             ## Filter by time range and location
-            L5_collection = (collect.filterDate(dates[0], dates[1])
+            L5_collection = (collect.filterDate(date_start, date_end)
                              .filterBounds(polygon))
 
 
@@ -359,7 +348,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
 
     if sat_name == 'L8':
         ## Filter by time range and location
-        L8_collection = (collect.filterDate(dates[0], dates[1])
+        L8_collection = (collect.filterDate(date_start, date_end)
                          .filterBounds(polygon))
 
         # Apply cloud masking to all images within collection then select bands
@@ -385,7 +374,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
             # Add Landsat 7 to Collection
             collect = ee.ImageCollection('LANDSAT/LE07/C01/T1_TOA')
             ## Filter by time range and location
-            L7_collection = (collect.filterDate(dates[0], dates[1])
+            L7_collection = (collect.filterDate(date_start, date_end)
                              .filterBounds(polygon))
 
 
@@ -495,12 +484,11 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
             Define a function to assemble all of the cloud and cloud shadow components and produce the final mask.
 
             """
-
             # Add cloud component bands.
             image_cloud = add_cloud_bands(img)
 
             # End date from user input range
-            user_end = dates[0].split("-")
+            user_end = date_start.split("-")
             # Period of Sentinel 2 data before Surface reflectance data is available
             start = datetime(2015, 6, 23)
             end = datetime(2019, 1, 28)
@@ -541,7 +529,7 @@ def get_median_image_optical(collection, dates, polygon, sat_name, settings):
             return img.select('B.*').updateMask(not_cloud_shadow)
 
         # Build masks and apply to S2 image
-        s2_sr_cloud_col, median_number = get_S2_SR_cloud_col(polygon, dates[0], dates[1], settings['CLOUD_FILTER'])
+        s2_sr_cloud_col, median_number = get_S2_SR_cloud_col(settings)
 
         image_median = (s2_sr_cloud_col.map(add_cloud_shadow_mask)
                         .map(apply_cloud_shadow_mask)
@@ -807,9 +795,12 @@ def retrieve_training_images(inputs):
 
 def check_training_images_available(inputs):
 
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
+
     # check if dates are in correct order
     dates = [datetime.strptime(_,'%Y-%m-%d') for _ in inputs['dates']]
-    if dates[1] <= dates[0]:
+    if date_end <= date_start:
         raise Exception('Verify that your dates are in the correct order')
 
     # check if EE was initialised or not
@@ -953,39 +944,14 @@ def load_metadata(settings):
     return metadata
 
 
-def get_S2_SR_cloud_col(aoi, date_start, date_end, CLOUD_FILTER):
-    """
-    ### Build a Sentinel-2 collection
+def get_S2_SR_cloud_col(settings):
 
-    [Sentinel-2 surface reflectance]
-    (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR)
-    and [Sentinel-2 cloud probability]
-    (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_CLOUD_PROBABILITY)
-    are two different image collections. Each collection must be filtered
-    similarly (e.g., by date and bounds) and then the two filtered collections
-    must be joined.
+    inputs = settings['inputs']
+    polygon = ee.Geometry.Polygon(inputs['polygon'])
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
+    CLOUD_FILTER = settings['CLOUD_FILTER']
 
-    Define a function to filter the SR and s2cloudless collections
-    according to polygon of interest and date parameters, then join them on
-    the `system:index` property. The result is a copy of the SR collection
-    where each image has a new `'s2cloudless'` property whose value is the
-    corresponding s2cloudless image.
-
-    Parameters
-    ----------
-    aoi : TYPE
-        DESCRIPTION.
-    date_start : TYPE
-        DESCRIPTION.
-    date_end : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    TYPE
-        DESCRIPTION.
-
-    """
     # End date from user input range
     user_end = date_start.split("-")
     # Period of Sentinel 2 data before Surface reflectance data is available
@@ -996,19 +962,19 @@ def get_S2_SR_cloud_col(aoi, date_start, date_end, CLOUD_FILTER):
     if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
         # Import and filter S2 SR.
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR')
-                     .filterBounds(aoi)
+                     .filterBounds(polygon)
                      .filterDate(date_start, date_end)
                      .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
     else:
         # Import and filter S2 SR.
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2')
-                     .filterBounds(aoi)
+                     .filterBounds(polygon)
                      .filterDate(date_start, date_end)
                      .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
 
     # Import and filter s2cloudless.
     s2_cloudless_col = (ee.ImageCollection('COPERNICUS/S2_CLOUD_PROBABILITY')
-                        .filterBounds(aoi)
+                        .filterBounds(polygon)
                         .filterDate(date_start, date_end))
 
     ##Print Images in Collection
