@@ -775,11 +775,14 @@ def find_reference_threshold(settings):
 
     else:
         threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
-        reference_shoreline = NOC_preprocess.load_reference_shoreline_median(inputs, ref=True)
+        
+        reference_shoreline = NOC_preprocess.load_reference_shoreline(inputs,ref=True)
+        settings['reference_shoreline'] = reference_shoreline
         mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef,
                                            image_epsg, settings)
         image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                    pixel_size, settings)
+
         threshold_images = np.mean(threshold_images, axis=3)
 
         _, image_labels = NOC_classify.classify_image_NN(threshold_images, classes, threshold_cloud_mask,

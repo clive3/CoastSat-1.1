@@ -13,7 +13,7 @@ def preprocess_sar(file_name):
     return sar_stack, georef
 
 
-def load_reference_shoreline_median(inputs, ref=False):
+def load_reference_shoreline(inputs, ref=False):
 
     site_name = inputs['site_name']
     if ref:
@@ -29,6 +29,9 @@ def load_reference_shoreline_median(inputs, ref=False):
 
         with open(os.path.join(median_dir_path, ref_shoreline_file_name), 'rb') as f:
             ref_shoreline = pickle.load(f)
+
+            print(f'@@@ ref_shoreline count {np.count_nonzero(ref_shoreline)}')
+            print(f'@@@ ref_shoreline shape {ref_shoreline.shape}')
 
         printProgress('reference shoreline loaded')
         return ref_shoreline
