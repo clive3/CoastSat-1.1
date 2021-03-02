@@ -52,11 +52,6 @@ def extract_shoreline_optical(metadata, settings, ref=False):
 
     # load classifier
     if sat_name in ['L5', 'L7', 'L8']:
-#            if settings['sand_color'] == 'dark':
-#                classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat_dark.pkl'))
-#            elif settings['sand_color'] == 'bright':
-#                classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat_bright.pkl'))
-#            else:
         classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat.pkl'))
 
     elif sat_name == 'S2':
@@ -108,16 +103,19 @@ def extract_shoreline_optical(metadata, settings, ref=False):
                                                        min_beach_area_pixels, classifier)
 
     # find the shoreline interactively
-    shoreline, _, skip_image = adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
-                                            mndwi_buffer, image_epsg, georef,
-                                            settings, sat_name, ref=ref)
-
-    if not skip_image:
+    shoreline, _, skip_image = adjust_detection_optical(image_ms, cloud_mask,
+                                                        image_labels, image_ref_buffer,
+                                                        mndwi_buffer, image_epsg, georef,
+                                                        settings, ref=ref)
+    if skip_image:
+        printProgress('shoreline skipped')
+        printProgress('')
+    else:
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
 
         if ~gdf.empty:
             gdf.crs = {'init': 'epsg:' + str(settings['output_epsg'])}  # set layer projection
-            # save GEOJSON layer to file
+            # save shoreline GEOJSON layer to disc
             gdf.to_file(os.path.join(inputs['median_dir_path'],'shorelines',
                                      shoreline_folder, shoreline_file_name),
                         driver='GeoJSON', encoding='utf-8')
@@ -125,29 +123,26 @@ def extract_shoreline_optical(metadata, settings, ref=False):
             printSuccess('shoreline saved')
         else:
             printWarning('no shorelines to be seen ...')
-    else:
-        printProgress('shoreline skipped')
-        printProgress('')
 
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
 
 
-def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffer,
-                             mndwi_buffer, image_epsg, georef,
-                             settings, sat_name, ref=False):
+def adjust_detection_optical(image_ms, cloud_mask, image_labels,
+                             image_ref_buffer, mndwi_buffer, image_epsg,
+                             georef,  settings, ref=False):
 
     inputs = settings['inputs']
+    sat_name = inputs['sat_name']
     site_name = inputs['site_name']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
     median_dir_path = inputs['median_dir_path']
+    pansharpen = inputs['pansharpen']
 
-    #  image_classifiery will become filled with labels
     image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
-    image_classified = np.copy(image_RGB)
-    image_classified = np.where(np.isnan(image_classified), 1.0, 1.0)
+    image_classified = np.ones(image_RGB.shape)
 
     # compute MNDWI grayscale image
     image_mndwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
@@ -316,44 +311,49 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels, image_ref_buffe
     # let the user press a key, right arrow to keep the image, left arrow to skip it
     # to break the loop the user can press 'escape'
     skip_image = False
-    if not ref:
-        while True:
-            btn_keep = plt.text(1.1, 0.9, 'keep ⇨', size=12, ha="right", va="top",
-                                transform=ax1.transAxes,
-                                bbox=dict(boxstyle="square", ec='k', fc='w'))
-            btn_skip = plt.text(-0.1, 0.9, '⇦ skip', size=12, ha="left", va="top",
-                                transform=ax1.transAxes,
-                                bbox=dict(boxstyle="square", ec='k', fc='w'))
-            btn_esc = plt.text(0.5, 0, '<esc> to quit', size=12, ha="center", va="top",
-                               transform=ax1.transAxes,
-                               bbox=dict(boxstyle="square", ec='k', fc='w'))
-            plt.draw()
-            fig.canvas.mpl_connect('key_press_event', press)
+
+    while True:
+        btn_keep = plt.text(1.1, 0.9, 'keep ⇨', size=12, ha="right", va="top",
+                            transform=ax1.transAxes,
+                            bbox=dict(boxstyle="square", ec='k', fc='w'))
+        btn_skip = plt.text(-0.1, 0.9, '⇦ skip', size=12, ha="left", va="top",
+                            transform=ax1.transAxes,
+                            bbox=dict(boxstyle="square", ec='k', fc='w'))
+        btn_esc = plt.text(0.5, 0, '<esc> to quit', size=12, ha="center", va="top",
+                           transform=ax1.transAxes,
+                           bbox=dict(boxstyle="square", ec='k', fc='w'))
+        plt.draw()
+        fig.canvas.mpl_connect('key_press_event', press)
+        plt.waitforbuttonpress()
+        # after button is pressed, remove the buttons
+        btn_skip.remove()
+        btn_keep.remove()
+        btn_esc.remove()
+
+        # keep/skip image according to the pressed key, 'escape' to break the loop
+        if key_event.get('pressed') == 'right':
+            skip_image = False
+            break
+        elif not ref and key_event.get('pressed') == 'left':
+            skip_image = True
+            break
+        elif key_event.get('pressed') == 'escape':
+            plt.close()
+            raise StopIteration('User cancelled checking shoreline detection')
+        else:
             plt.waitforbuttonpress()
-            # after button is pressed, remove the buttons
-            btn_skip.remove()
-            btn_keep.remove()
-            btn_esc.remove()
-
-            # keep/skip image according to the pressed key, 'escape' to break the loop
-            if key_event.get('pressed') == 'right':
-                skip_image = False
-                break
-            elif key_event.get('pressed') == 'left':
-                skip_image = True
-                break
-            elif key_event.get('pressed') == 'escape':
-                plt.close()
-                raise StopIteration('User cancelled checking shoreline detection')
-            else:
-                plt.waitforbuttonpress()
-
-        plt.close()
     
-     # if save_figure is True, save a .jpg under /jpg_files/detection
+     # if not skipping save the jpeg shpowing selection
     if not skip_image:
+
+        if pansharpen:
+            jpeg_file_name = sat_name + '_PS_detection_S' + date_start + '_E' + date_end + '.jpg'
+        else:
+            jpeg_file_name = sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-        fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'), dpi=150)
+        fig.savefig(os.path.join(jpeg_file_path, jpeg_file_name), dpi=150)
+
+    plt.close()
 
     if not ref and not skip_image:
         printProgress('shoreline extracted')
@@ -376,11 +376,11 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     vec_ind = image_ind.reshape(nrows*ncols, 2)
 
     # reshape labels into vectors
-    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
+#    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
     vec_land2 = image_labels[:, :, 1].reshape(ncols * nrows)
     vec_land3 = image_labels[:, :, 2].reshape(ncols * nrows)
 #    vec_sand = image_labels[:, :, 5].reshape(ncols * nrows)
-    vec_all_land = np.logical_or(np.logical_or(vec_land2, vec_land3), vec_land1)
+    vec_all_land = np.logical_or(vec_land2, vec_land3)
 
     vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
     vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
@@ -453,7 +453,7 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
                                                     pixel_size, settings)
 
-        shoreline, _ = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg,
+        shoreline, _, _ = adjust_detection_sar(sar_image, image_ref_buffer, image_epsg,
                                           georef, settings, ref=ref)
 
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
@@ -482,11 +482,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     polarisation = inputs['polarisation']
     date_start = inputs['dates'][0]
     data_end = inputs['dates'][1]
-
-    if ref:
-        reference_threshold = 0
-    else:
-        reference_threshold = inputs['reference_threshold']
 
     site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
@@ -555,10 +550,11 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
     bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + bin_width, bin_width)
     ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
-    if reference_threshold == 0:
+    if ref:
         t_sar = filters.threshold_otsu(image_pol)
     else:
-        t_sar = reference_threshold
+        t_sar = inputs['reference_threshold']
+
     contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
@@ -620,11 +616,52 @@ def adjust_detection_sar(sar_image, image_ref_buffer, image_epsg, georef, settin
             ax4.set_title('sigma0 pixel intensities and threshold')
             break
 
-    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-    fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
-                             '_E' + data_end + '.jpg'), dpi=150)
+    skip_image = False
 
-    return shoreline, t_sar
+    if ref:
+        key_event = {}
+
+        def press(event):
+            # store what key was pressed in the dictionary
+            key_event['pressed'] = event.key
+
+        while True:
+            btn_keep = plt.text(1.1, 0.9, 'keep ⇨', size=12, ha="right", va="top",
+                                transform=ax1.transAxes,
+                                bbox=dict(boxstyle="square", ec='k', fc='w'))
+            btn_skip = plt.text(-0.1, 0.9, '⇦ skip', size=12, ha="left", va="top",
+                                transform=ax1.transAxes,
+                                bbox=dict(boxstyle="square", ec='k', fc='w'))
+            btn_esc = plt.text(0.5, 0, '<esc> to quit', size=12, ha="center", va="top",
+                               transform=ax1.transAxes,
+                               bbox=dict(boxstyle="square", ec='k', fc='w'))
+            plt.draw()
+            fig.canvas.mpl_connect('key_press_event', press)
+            plt.waitforbuttonpress()
+            # after button is pressed, remove the buttons
+            btn_skip.remove()
+            btn_keep.remove()
+            btn_esc.remove()
+
+            # keep/skip image according to the pressed key, 'escape' to break the loop
+            if key_event.get('pressed') == 'right':
+                skip_image = False
+                break
+            elif key_event.get('pressed') == 'left':
+                skip_image = True
+                break
+            elif key_event.get('pressed') == 'escape':
+                plt.close()
+                raise StopIteration('User cancelled checking shoreline detection')
+            else:
+                plt.waitforbuttonpress()
+
+    if not ref or not skip_image:
+        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+        fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
+                                 '_E' + data_end + '.jpg'), dpi=150)
+
+    return shoreline, t_sar, skip_image
 
 
 def find_reference_threshold(settings):
@@ -672,7 +709,6 @@ def find_reference_threshold(settings):
         min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
         pansharpen = inputs['pansharpen']
 
-
     with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
         metadata_dict = pickle.load(f)
 
@@ -680,15 +716,12 @@ def find_reference_threshold(settings):
     file_names = metadata_sat['file_names']
     image_epsg = int(metadata_sat['epsg'][0])
 
-    printProgress('file_names loaded')
-
-    printProgress('displaying reference histogram')
+    printProgress('metadata loaded')
 
     # close all open figures
     plt.close('all')
 
     file_path_list = []
-
     for file_index, file_name in enumerate(file_names):
 
         meta_date_start = date.fromisoformat(metadata_sat['date_start'][file_index])
@@ -723,7 +756,7 @@ def find_reference_threshold(settings):
 
         else:
 
-            optical_image, _, cloud_mask, image_extra, image_QA, image_nodata = \
+            optical_image, _, _, _, _, _ = \
                 NOC_preprocess.preprocess_single(file_paths, sat_name, cloud_mask_issue,
                                                  pansharpen=pansharpen,
                                                  SWIR_band=SWIR_band,
@@ -732,40 +765,45 @@ def find_reference_threshold(settings):
 
     # calculate a buffer around the reference shoreline if it has already been generated
     buffer_shape = (threshold_images.shape[0], threshold_images.shape[1])
-    image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
-    threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
 
     if sat_name == 'S1':
+        image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
         threshold_images = gaussian(threshold_images, sigma=sigma, mode='reflect')
-        reference_shoreline, reference_threshold = adjust_detection_sar(threshold_images, image_ref_buffer,
+        reference_shoreline, reference_threshold, skip_image = adjust_detection_sar(threshold_images, image_ref_buffer,
                                                                         image_epsg, georef, settings,
                                                                         ref=True)
 
     else:
+        threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
         reference_shoreline = NOC_preprocess.load_reference_shoreline_median(inputs, ref=True)
         mndwi_buffer = create_mndwi_buffer(reference_shoreline, buffer_shape, georef,
                                            image_epsg, settings)
-
+        image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
+                                                   pixel_size, settings)
         threshold_images = np.mean(threshold_images, axis=3)
 
         _, image_labels = NOC_classify.classify_image_NN(threshold_images, classes, threshold_cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
-        reference_shoreline, reference_threshold, _ = \
+        reference_shoreline, reference_threshold, skip_image = \
                     adjust_detection_optical(threshold_images, threshold_cloud_mask, image_labels,
                                              image_ref_buffer, mndwi_buffer, image_epsg, georef,
-                                             settings, sat_name, ref=True)
+                                             settings, ref=True)
 
-    with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' + sat_name + '.pkl'), 'wb') as f:
-        pickle.dump(reference_shoreline, f)
+    if not skip_image:
+        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' + sat_name + '.pkl'), 'wb') as f:
+            pickle.dump(reference_shoreline, f)
+
+        if sat_name == 'S1':
+            printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:3.2f}')
+        else:
+            printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
+    else:
+        printWarning('reference shoreline not saved')
 
     # close figure window if still open
     if plt.get_fignums():
         plt.close()
-    if sat_name == 'S1':
-        printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:3.2f}')
-    else:
-        printSuccess(f'reference shoreline saved, reference threshold: {reference_threshold:4.3f}')
 
     return reference_threshold
 

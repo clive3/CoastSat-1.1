@@ -1,27 +1,30 @@
 from coastsat.SDS_download import *
-from utils.print_utils import printProgress, printError, printSuccess
 
+from utils.print_utils import printProgress, printError, printSuccess
 
 
 def retrieve_median_sar(inputs):
 
     pixel_size = inputs['pixel_size']
+    sat_name = inputs['sat_name']
     median_dir_path = inputs['median_dir_path']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
 
     if date_start > date_end:
-        printError('you cannot have a end date before the start date')
+        printError('you cannot have end date before the start date')
 
-    # create a new directory for this site with the name of the site
+    # create a new directories as required
     if not os.path.exists(median_dir_path):
         os.makedirs(median_dir_path)
 
-    # create subdir structure to store the different polarisations
-    sar_dir_path = os.path.join(median_dir_path, 'S1')
+    # create directories store the image geotiffs and metadata
+    sar_dir_path = os.path.join(median_dir_path, sat_name)
     if not os.path.exists(sar_dir_path):
         os.makedirs(sar_dir_path)
-
+    meta_dir_path = os.path.join(sar_dir_path, 'meta')
+    if not os.path.exists(meta_dir_path):
+        os.makedirs(meta_dir_path)
 
     printProgress('connecting to GEE')
 
@@ -69,7 +72,7 @@ def retrieve_median_sar(inputs):
                      'number_images': number_images}
 
     # write metadata as text file
-    with open(os.path.join(sar_dir_path, txt_file_name), 'w') as f:
+    with open(os.path.join(meta_dir_path, txt_file_name), 'w') as f:
         for key in metadata_dict.keys():
             f.write('%s\t%s\n' % (key, metadata_dict[key]))
 
@@ -871,22 +874,13 @@ def save_metadata(settings):
     # if a dir has been created for the given satellite mission
     if sat_name in os.listdir(median_dir_path):
 
-        images_dir_path = os.path.join(median_dir_path, sat_name)
+        meta_dir_path = os.path.join(median_dir_path, sat_name, 'meta')
+        metadata_files = os.listdir(meta_dir_path)
         # update the metadata dict
         metadata[sat_name] = {'file_names':[], 'epsg':[], 'date_start':[],
                               'date_end':[], 'number_images':[]}
 
-        # get the list of filenames and sort it chronologically
-        object_names = os.listdir(images_dir_path)
-
-        if 'meta' in object_names:
-            meta_dir_path = os.path.join(images_dir_path, 'meta')
-            object_names = os.listdir(meta_dir_path)
-        else:
-            object_names = os.listdir(images_dir_path)
-            meta_dir_path = images_dir_path
-
-        text_files = [file_name for file_name in object_names if file_name[-4:] == '.txt']
+        text_files = [file_name for file_name in metadata_files if file_name[-4:] == '.txt']
 
         # loop through the .txt files
         for image_meta in text_files:
