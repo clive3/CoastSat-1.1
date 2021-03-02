@@ -4,7 +4,7 @@ from utils.print_utils import printProgress, printError, printSuccess
 
 
 def retrieve_median_sar(inputs):
-    
+
     # initialise connection with GEE server
     ee.Initialize()
     printProgress('connected to GEE')
@@ -47,13 +47,13 @@ def retrieve_median_sar(inputs):
     epsg = int(gee_metadata['bands'][0]['crs'][5:])
 
     median_filename = inputs['site_name'] + '_median_' + \
-                       'S' + date_start + '_E' + date_end + '.tif'
+                        'S' + date_start + '_E' + date_end + '.tif'
     download_median_image(median_image, ee.Number(pixel_size),
                           inputs['polygon'], sar_dir_path)
 
     # rename the file as the image is downloaded as 'data.tif'
     # locate download
-    local_data = sar_dir_path + '\data.tif'
+    local_data = sar_dir_path + '\\data.tif'
     local_file_path = os.path.join(sar_dir_path, median_filename)
 
     try:
@@ -85,9 +85,8 @@ def retrieve_median_optical(settings):
 
     sat_name = inputs['sat_name']
     polygon = inputs['polygon']
-    dates = inputs['dates']
-    date_start = dates[0]
-    date_end = dates[1]
+    date_start = inputs['dates'][0]
+    date_end = inputs['dates'][1]
     site_name = inputs['site_name']
 
     band_list = settings['bands'][sat_name]
@@ -150,7 +149,7 @@ def retrieve_median_optical(settings):
         band_file_path = filepaths[band_number]
         image_file_name = image_filename[band_key]
 
-        local_data = filepaths[band_number] + '\data.tif'
+        local_data = filepaths[band_number] + '\\data.tif'
         local_file_path = os.path.join(band_file_path, image_file_name)
 
         printProgress(f'\t"{band_key}" bands:\t{band_names}')
