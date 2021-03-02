@@ -1,7 +1,3 @@
-import os
-import pickle
-
-import numpy
 from skimage.filters import gaussian
 from datetime import date
 
