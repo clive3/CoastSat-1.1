@@ -25,6 +25,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     band_dict = settings['bands'][sat_name]
     first_key = next(iter(band_dict))
     pixel_size = band_dict[first_key][1]
+    settings['pixel_size'] = pixel_size
     bands_20m = band_dict['20m'][0]
     for SWIR_index, SWIR_band in enumerate(bands_20m):
         if settings['SWIR'] == SWIR_band:
@@ -71,13 +72,16 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     printProgress('image loaded')
     # preprocess image (cloud mask + pansharpening/downsampling)
     image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-            NOC_preprocess.preprocess_optical(file_paths, sat_name, settings['cloud_mask_issue'],
+            NOC_preprocess.preprocess_optical(file_paths, settings,
                                               pansharpen=pansharpen,
                                               SWIR_band=SWIR_band,
                                               SWIR_index=SWIR_index)
 
     # get image spatial reference system (epsg code) from metadata dict
     image_epsg = int(metadata['epsg'])
+    settings['image_epsg'] = image_epsg
+    settings['georef'] = georef
+
 
     # compute cloud_cover percentage (with no data pixels)
     cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
@@ -96,10 +100,8 @@ def extract_shoreline_optical(metadata, settings, ref=False):
         return []
 
     buffer_shape = cloud_mask.shape
-    image_ref_buffer = create_shoreline_buffer(buffer_shape, georef, image_epsg,
-                                               pixel_size, settings)
-    mndwi_buffer = create_mndwi_buffer(settings['reference_shoreline'], buffer_shape,
-                                       georef, image_epsg, settings)
+    image_ref_buffer = create_shoreline_buffer(buffer_shape, settings)
+    mndwi_buffer = create_mndwi_buffer(buffer_shape, settings)
 
     printProgress('classifying image')
     # classify image with NN classifier
@@ -109,8 +111,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     # find the shoreline interactively
     shoreline, _, skip_image = adjust_detection_optical(image_ms, cloud_mask,
                                                         image_labels, image_ref_buffer,
-                                                        mndwi_buffer, image_epsg, georef,
-                                                        settings, ref=ref)
+                                                        mndwi_buffer, settings, ref=ref)
     if skip_image:
         printProgress('shoreline skipped')
         printProgress('')
@@ -719,7 +720,6 @@ def find_reference_threshold(settings):
             if settings['SWIR'] == SWIR_band:
                 break
 
-        cloud_mask_issue = settings['cloud_mask_issue']
         classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
         min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
         pansharpen = inputs['pansharpen']
@@ -774,7 +774,7 @@ def find_reference_threshold(settings):
         else:
 
             optical_image, _, _, _, _, _ = \
-                NOC_preprocess.preprocess_optical(file_paths, sat_name, cloud_mask_issue,
+                NOC_preprocess.preprocess_optical(file_paths, settings,
                                                   pansharpen=pansharpen,
                                                   SWIR_band=SWIR_band,
                                                   SWIR_index=SWIR_index)
@@ -786,9 +786,9 @@ def find_reference_threshold(settings):
     if sat_name == 'S1':
         image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
         threshold_images = gaussian(threshold_images, sigma=sigma, mode='reflect')
-        reference_shoreline, reference_threshold, skip_image = adjust_detection_sar(threshold_images, image_ref_buffer,
-                                                                        settings,
-                                                                        ref=True)
+        reference_shoreline, reference_threshold, skip_image = \
+                                    adjust_detection_sar(threshold_images, image_ref_buffer,
+                                                         settings, ref=True)
 
     else:
         threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
@@ -805,8 +805,7 @@ def find_reference_threshold(settings):
 
         reference_shoreline, reference_threshold, skip_image = \
                     adjust_detection_optical(threshold_images, threshold_cloud_mask, image_labels,
-                                             image_ref_buffer, mndwi_buffer, image_epsg, georef,
-                                             settings, ref=True)
+                                             image_ref_buffer, mndwi_buffer, settings, ref=True)
 
     if not skip_image:
         with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' + sat_name + '.pkl'), 'wb') as f:
