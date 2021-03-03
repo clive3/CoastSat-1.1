@@ -34,9 +34,10 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     pansharpen = inputs['pansharpen']
     if pansharpen:
         shoreline_folder = 'pan'
+        shoreline_file_name = geojsonFileName(site_name, sat_name + '_PS', date_start, date_end)
     else:
         shoreline_folder = 'standard'
-    shoreline_file_name = geojsonFileName(site_name, sat_name, date_start, date_end)
+        shoreline_file_name = geojsonFileName(site_name, sat_name, date_start, date_end)
 
     shoreline_dir_path = os.path.join(median_dir_path, 'shorelines', shoreline_folder)
     if not os.path.exists(shoreline_dir_path):
@@ -234,11 +235,13 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
             bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
             ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
 
-    contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
     if ref:
-        reference_threshold = t_mndwi
+        reference_threshold = 0
+        contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
     else:
         reference_threshold = inputs['reference_threshold']
+        t_mndwi = reference_threshold
+        contours_mndwi = measure.find_contours(image_mndwi_buffered, level=t_mndwi, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_shoreline(contours_mndwi, cloud_mask, georef, image_epsg, settings)
@@ -555,12 +558,10 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
     if ref:
         reference_threshold = 0
         t_sar = filters.threshold_otsu(image_pol)
-        contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
-
     else:
         reference_threshold = inputs['reference_threshold']
         t_sar = reference_threshold
-        contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
+    contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_sar_shoreline(contours_sar, settings)
