@@ -335,7 +335,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
         if key_event.get('pressed') == 'right':
             skip_image = False
             break
-        elif not ref and key_event.get('pressed') == 'left':
+        elif key_event.get('pressed') == 'left':
             skip_image = True
             break
         elif key_event.get('pressed') == 'escape':
