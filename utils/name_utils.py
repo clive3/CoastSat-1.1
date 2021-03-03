@@ -25,7 +25,7 @@ def pickleDumpName(pickle_type, site_name, sat_name):
 
 def jpegFileName(jpeg_type, sat_name, date_start, date_end):
 
-    file_name = sat_name + '_' + jpeg_type + date_start.replace('-','') +'_'+ date_end.replace('-','') + '.jpg'
+    file_name = sat_name + '_' + jpeg_type + '_' + date_start.replace('-','') +'_'+ date_end.replace('-','') + '.jpg'
 
     return file_name
 

@@ -416,10 +416,11 @@ def extract_shoreline_sar(metadata, settings, ref=False):
 
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
-    site_name = inputs['site_name']
+    site_name = inputs['polarisation']
     pixel_size = inputs['pixel_size']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
+    polarisation = inputs['polarisation']
 
     file_names = metadata['file_names']
     settings['image_epsg'] = int(metadata['epsg'])
@@ -455,13 +456,12 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         shoreline, _, _ = adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=ref)
 
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
-        shoreline_file_name = geojsonFileName(site_name, sat_name, date_start, date_end)
+        shoreline_file_name = geojsonFileName(site_name, polarisation, date_start, date_end)
 
         if ~gdf.empty:
             gdf.crs = {'init':'epsg:'+str(settings['output_epsg'])} # set layer projection
             # save GEOJSON layer to file
-            gdf.to_file(os.path.join(inputs['median_dir_path'], 'shorelines', 'sar',
-                                     shoreline_file_name),
+            gdf.to_file(os.path.join(median_dir_path, 'shorelines\\sar', shoreline_file_name),
                                      driver='GeoJSON', encoding='utf-8')
 
             printSuccess('shoreline saved')
@@ -479,10 +479,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
     image_epsg = settings['image_epsg']
     output_epsg = settings['output_epsg']
     georef = settings['georef']
-    if ref:
-        reference_threshold = 0
-    else:
-        reference_threshold = inputs['reference_threshold']
 
     sat_name = inputs['sat_name']
     polarisation = inputs['polarisation']
@@ -556,8 +552,15 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
     bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + bin_width, bin_width)
     ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
-    t_sar = filters.threshold_otsu(image_pol)
-    contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
+    if ref:
+        reference_threshold = 0
+        t_sar = filters.threshold_otsu(image_pol)
+        contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
+
+    else:
+        reference_threshold = inputs['reference_threshold']
+        t_sar = reference_threshold
+        contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
     shoreline = process_sar_shoreline(contours_sar, settings)
@@ -762,7 +765,7 @@ def find_reference_threshold(settings):
 
         else:
 
-            printProgress(f'pansharpening SWIR using: {SWIR_band} for image {file_index+1}')
+            printProgress(f'pansharpening SWIR - using {SWIR_band} - image {file_index+1}')
             optical_image, _, _, _, _, _ = \
                 NOC_preprocess.preprocess_optical(file_paths, settings,
                                                   pansharpen=pansharpen,

@@ -52,7 +52,7 @@ def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR
     if pansharpen:
 
         if not ref:
-            printProgress(f'pansharpening SWIR using: {SWIR_band}')
+            printProgress(f'pansharpening SWIR - using {SWIR_band}')
 
         image_NIR = image_10[:,:,3]
         image_20m = pansharpen_SWIR(image_20m, image_NIR)
