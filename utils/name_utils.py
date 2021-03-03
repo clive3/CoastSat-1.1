@@ -18,7 +18,7 @@ def geotifFileName(site_name, date_start, date_end, band_key):
 
 def pickleDumpName(pickle_type, site_name, sat_name):
 
-    file_name =  site_name + '_' + pickle_type '_' + sat_name + '.pkl'
+    file_name =  site_name + '_' + pickle_type + '_' + sat_name + '.pkl'
 
     return file_name
 
