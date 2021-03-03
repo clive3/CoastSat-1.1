@@ -68,16 +68,15 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     printProgress('image loaded')
     # preprocess image (cloud mask + pansharpening/downsampling)
     image_ms, georef, cloud_mask, image_extra, image_QA, image_nodata = \
-            NOC_preprocess.preprocess_optical(file_paths, settings,
-                                              pansharpen=pansharpen,
-                                              SWIR_band=SWIR_band,
-                                              SWIR_index=SWIR_index)
+                                            NOC_preprocess.preprocess_optical(file_paths, settings,
+                                                                              pansharpen=pansharpen,
+                                                                              SWIR_band=SWIR_band,
+                                                                              SWIR_index=SWIR_index)
 
     # get image spatial reference system (epsg code) from metadata dict
     image_epsg = int(metadata['epsg'])
     settings['image_epsg'] = image_epsg
     settings['georef'] = georef
-
 
     # compute cloud_cover percentage (with no data pixels)
     cloud_cover_combined = np.divide(sum(sum(cloud_mask.astype(int))),
@@ -450,7 +449,8 @@ def extract_shoreline_sar(metadata, settings, ref=False):
 
         ## read the geotiff
         sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
-
+        settings['georef'] = georef
+        
         # calculate a buffer around the reference shoreline if it has already been generated
         buffer_shape = (sar_image.shape[0], sar_image.shape[1])
         image_ref_buffer = create_shoreline_buffer(buffer_shape, settings)
@@ -507,7 +507,6 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
 
 
     image_pol = np.copy(sar_image[:,:,band_index])
-    # and the vectors needed for the histogram
     vec_shape = (sar_image.shape[0] * sar_image.shape[1])
     vec_pol = image_pol.reshape(vec_shape)
 
@@ -549,6 +548,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
     ax3.imshow(image_pol, cmap='bwr')
     ax3.axis('off')
     ax3.set_title(polarisation, fontweight='bold', fontsize=16)
+    ax3.imshow(image_ref_buffer, cmap='binary', alpha=0.3)
 
     # plot histogram of sigma values
     ax4.set_facecolor('0.75')
