@@ -108,8 +108,7 @@ def extract_shoreline_optical(metadata, settings, ref=False):
                                                         image_labels, image_ref_buffer,
                                                         mndwi_buffer, settings, ref=ref)
     if skip_image:
-        printProgress('shoreline skipped')
-        printProgress('')
+        printWarning('shoreline skipped')
     else:
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
 
@@ -450,7 +449,7 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         ## read the geotiff
         sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
         settings['georef'] = georef
-        
+
         # calculate a buffer around the reference shoreline if it has already been generated
         buffer_shape = (sar_image.shape[0], sar_image.shape[1])
         image_ref_buffer = create_shoreline_buffer(buffer_shape, settings)
@@ -933,7 +932,7 @@ def load_reference_shoreline(inputs, ref=False):
         with open(os.path.join(median_dir_path, ref_shoreline_file_name), 'rb') as f:
             ref_shoreline = pickle.load(f)
 
-        printProgress('reference shoreline loaded')
+        printProgress(f'{sat_name} reference shoreline loaded')
         return ref_shoreline
     else:
         printWarning('no reference shoreline found')
