@@ -13,7 +13,7 @@ def preprocess_sar(file_name):
     return sar_stack, georef
 
 
-def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR_index=5):
+def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR_index=5, ref=False):
 
     sat_name = settings['inputs']['sat_name']
     cloud_mask_issue = settings['cloud_mask_issue']
@@ -50,7 +50,9 @@ def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR
                                  order=1, preserve_range=True,
                                  mode='constant')
     if pansharpen:
-        printProgress(f'pansharpening SWIR using: {SWIR_band}')
+
+        if not ref:
+            printProgress(f'pansharpening SWIR using: {SWIR_band}')
 
         image_NIR = image_10[:,:,3]
         image_20m = pansharpen_SWIR(image_20m, image_NIR)

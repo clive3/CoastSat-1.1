@@ -146,8 +146,8 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
     # compute MNDWI grayscale image
     image_mndwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
     # buffer MNDWI using reference shoreline
-    image_mndwi_buffer = np.copy(image_mndwi)
-    image_mndwi_buffer[~mndwi_buffer] = np.nan
+    image_mndwi_buffered = np.copy(image_mndwi)
+    image_mndwi_buffered[~mndwi_buffer] = np.nan
 
     # for each class add it to image_classified and
     # extract the MDWI values for all pixels in that class
@@ -157,13 +157,14 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
     mndwi_pixels = {}
     for key in class_keys:
         class_label = classes[key][0]
+        class_index = class_label - 1
         class_colour = classes[key][1]
 
-        image_classified[image_labels[:, :, class_label-1], 0] = class_colour[0]
-        image_classified[image_labels[:, :, class_label-1], 1] = class_colour[1]
-        image_classified[image_labels[:, :, class_label-1], 2] = class_colour[2]
+        image_classified[image_labels[:, :, class_index], 0] = class_colour[0]
+        image_classified[image_labels[:, :, class_index], 1] = class_colour[1]
+        image_classified[image_labels[:, :, class_index], 2] = class_colour[2]
 
-        mndwi_pixels[class_label] = image_mndwi[image_labels[:, :, class_label-1]]
+        mndwi_pixels[class_label] = image_mndwi[image_labels[:, :, class_index]]
 
     # create figure
     if plt.get_fignums():
@@ -233,12 +234,11 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
             bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
             ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
 
+    contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
     if ref:
-        contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
         reference_threshold = t_mndwi
     else:
-        reference_threshold = t_mndwi = inputs['reference_threshold']
-        contours_mndwi = measure.find_contours(image_mndwi_buffer, level=reference_threshold, mask=image_ref_buffer)
+        reference_threshold = inputs['reference_threshold']
 
     # process the water contours into a shoreline
     shoreline = process_shoreline(contours_mndwi, cloud_mask, georef, image_epsg, settings)
@@ -277,7 +277,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
             t_line.set_xdata([t_mndwi, t_mndwi])
             thresh_label.set(x=t_mndwi+bin_width, text=str(f'{t_mndwi:4.3f}'))
             # map contours with new threshold
-            contours = measure.find_contours(image_mndwi_buffer, level=t_mndwi,  mask=image_ref_buffer)
+            contours = measure.find_contours(image_mndwi_buffered, level=t_mndwi,  mask=image_ref_buffer)
             # remove contours that contain NaNs (due to cloud pixels in the contour)
             contours = process_contours(contours)
             # process the water contours into a shoreline
@@ -752,6 +752,7 @@ def find_reference_threshold(settings):
         settings['georef'] = georef
 
     threshold_images = np.ndarray(image_shape)
+
     for file_index, file_paths in enumerate(file_path_list):
 
         if sat_name == 'S1':
@@ -761,11 +762,13 @@ def find_reference_threshold(settings):
 
         else:
 
+            printProgress(f'pansharpening SWIR using: {SWIR_band} for image {file_index+1}')
             optical_image, _, _, _, _, _ = \
                 NOC_preprocess.preprocess_optical(file_paths, settings,
                                                   pansharpen=pansharpen,
                                                   SWIR_band=SWIR_band,
-                                                  SWIR_index=SWIR_index)
+                                                  SWIR_index=SWIR_index,
+                                                  ref=True)
             threshold_images[:, :, :, file_index] = optical_image
 
     # calculate a buffer around the reference shoreline if it has already been generated
@@ -779,6 +782,7 @@ def find_reference_threshold(settings):
                                                          settings, ref=True)
 
     else:
+
         threshold_cloud_mask = np.zeros(buffer_shape, dtype=np.bool)
 
         reference_shoreline = load_reference_shoreline(inputs, ref=True)
@@ -788,6 +792,7 @@ def find_reference_threshold(settings):
 
         threshold_images = np.mean(threshold_images, axis=3)
 
+        printProgress('classifying image')
         _, image_labels = NOC_classify.classify_image_NN(threshold_images, classes, threshold_cloud_mask,
                                                          min_beach_area_pixels, classifier)
 
