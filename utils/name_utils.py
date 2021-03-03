@@ -16,6 +16,13 @@ def geotifFileName(site_name, date_start, date_end, band_key):
     return file_name
 
 
+def pickleDumpName(pickle_type, site_name, sat_name):
+
+    file_name =  site_name + '_' + pickle_type '_' + sat_name + '.pkl'
+
+    return file_name
+
+
 def jpegFileName(jpeg_type, sat_name, date_start, date_end):
 
     file_name = sat_name + '_' + jpeg_type + date_start.replace('-','') +'_'+ date_end.replace('-','') + '.jpg'

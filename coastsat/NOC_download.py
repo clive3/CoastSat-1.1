@@ -1,7 +1,7 @@
 from coastsat.SDS_download import *
 
 from utils.print_utils import printProgress, printError, printSuccess
-from utils.name_utils import geotifFileName
+from utils.name_utils import geotifFileName, pickleDumpName
 
 
 def retrieve_median_sar(inputs):
@@ -878,7 +878,8 @@ def save_metadata(settings):
             metadata[sat_name]['number_images'].append(number_images)
 
     # save a .pkl file containing the metadata dict
-    with open(os.path.join(median_dir_path,  site_name + '_metadata_' + sat_name + '.pkl'), 'wb') as f:
+    metadata_file_name = pickleDumpName('metadata', site_name, sat_name)
+    with open(os.path.join(median_dir_path, metadata_file_name), 'wb') as f:
         pickle.dump(metadata, f)
 
     printProgress('metadata saved')
@@ -890,11 +891,13 @@ def load_metadata(settings):
     inputs = settings['inputs']
 
     sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
 
-    with open(os.path.join(median_dir_path, inputs['site_name'] + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
+    metadata_file_name = pickleDumpName('metadata', site_name, sat_name)
+    with open(os.path.join(median_dir_path,  metadata_file_name), 'rb') as f:
         metadata_dict = pickle.load(f)
 
     metadata_sat = metadata_dict[sat_name]

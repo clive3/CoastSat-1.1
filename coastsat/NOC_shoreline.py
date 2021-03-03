@@ -5,7 +5,7 @@ from coastsat.SDS_shoreline import *
 from coastsat import NOC_preprocess, NOC_classify, NOC_tools
 
 from utils.print_utils import printProgress, printSuccess, printWarning, printError
-from utils.name_utils import jpegFileName, geojsonFileName
+from utils.name_utils import jpegFileName, geojsonFileName, pickleDumpName
 
 
 def extract_shoreline_optical(metadata, settings, ref=False):
@@ -346,7 +346,7 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
     if not skip_image:
 
         if pansharpen:
-            sat_name += '_PS_'
+            sat_name += '_PS'
         jpeg_type = 'detection'
         jpeg_file_name = jpegFileName(jpeg_type, sat_name, date_start,  date_end)
         jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', jpeg_type)
@@ -801,7 +801,9 @@ def find_reference_threshold(settings):
                                              image_ref_buffer, mndwi_buffer, settings, ref=True)
 
     if not skip_image:
-        with open(os.path.join(median_dir_path, site_name + '_reference_shoreline_' + sat_name + '.pkl'), 'wb') as f:
+
+        reference_shoreline_file_name = pickleDumpName('reference_shoreline', site_name, sat_name)
+        with open(os.path.join(median_dir_path, reference_shoreline_file_name), 'wb') as f:
             pickle.dump(reference_shoreline, f)
 
         if sat_name == 'S1':
