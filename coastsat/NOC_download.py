@@ -1,6 +1,7 @@
 from coastsat.SDS_download import *
 
 from utils.print_utils import printProgress, printError, printSuccess
+from utils.name_utils import geotifFileName
 
 
 def retrieve_median_sar(inputs):
@@ -11,6 +12,7 @@ def retrieve_median_sar(inputs):
 
     pixel_size = inputs['pixel_size']
     sat_name = inputs['sat_name']
+    site_name = inputs['site_name']
     median_dir_path = inputs['median_dir_path']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
@@ -46,8 +48,7 @@ def retrieve_median_sar(inputs):
     gee_metadata = median_image.getInfo()
     epsg = int(gee_metadata['bands'][0]['crs'][5:])
 
-    median_filename = inputs['site_name'] + '_median_' + \
-                        'S' + date_start + '_E' + date_end + '.tif'
+    median_filename = geotifFileName(site_name, date_start, date_end, None)
     download_median_image(median_image, ee.Number(pixel_size),
                           inputs['polygon'], sar_dir_path)
 
@@ -113,27 +114,12 @@ def retrieve_median_optical(settings):
     image_metadata = median_image.getInfo()
     image_epsg = image_metadata['bands'][0]['crs'][5:]
 
-    all_names = []
     for band_key in band_list.keys():
-        image_filename[band_key] = site_name + '_median_' +\
-                              "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
-
-    # if two images taken at the same date add 'dup' to the name (duplicate)
-    if any(image_filename[band_key] in _ for _ in all_names):
-        for band_key in band_list.keys():
-            image_filename[band_key] = site_name + '_median_dup_' +\
-                              "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
-
-        # also check for triplicates (only on S2 imagery) and add 'tri' to the name
-        if image_filename[band_key] in all_names:
-            for band_key in band_list.keys():
-                image_filename[band_key] = site_name + '_median_tri_' +\
-                              "S" + date_start + "_E" + date_end + '_' + band_key + '.tif'
-    all_names.append(image_filename[band_key])
+        image_filename[band_key] = geotifFileName(site_name, date_start, date_end, band_key)
 
     printProgress('downloading median data for:')
 
-    if sat_name[0] == 'L' and settings['coregistration'] == True:
+    if sat_name[0] == 'L' and settings['coregistration'] is True:
 
 #            displacement = Landsat_Coregistration(inputs)
             # Apply XY displacement values from overlapping images to the median composite
@@ -154,7 +140,7 @@ def retrieve_median_optical(settings):
 
         printProgress(f'\t"{band_key}" bands:\t{band_names}')
         download_median_image(median_image, ee.Number(band_scale),
-                              polygon, band_file_path, bands=band_names)
+                               ee.Geometry.Polygon(polygon), band_file_path, bands=band_names)
 
         try:
             os.rename(local_data, local_file_path)

@@ -5,6 +5,7 @@ from coastsat.SDS_shoreline import *
 from coastsat import NOC_preprocess, NOC_classify, NOC_tools
 
 from utils.print_utils import printProgress, printSuccess, printWarning, printError
+from utils.name_utils import jpegFileName, geojsonFileName
 
 
 def extract_shoreline_optical(metadata, settings, ref=False):
@@ -33,12 +34,9 @@ def extract_shoreline_optical(metadata, settings, ref=False):
     pansharpen = inputs['pansharpen']
     if pansharpen:
         shoreline_folder = 'pan'
-        shoreline_file_name = f'{site_name}_shoreline_{sat_name}' + \
-                              f'_PS_S{date_start}_E{date_end}' + '.geojson'
     else:
         shoreline_folder = 'standard'
-        shoreline_file_name = f'{site_name}_shoreline_{sat_name}' + \
-                              f'_S{date_start}_E{date_end}' + '.geojson'
+    shoreline_file_name = geojsonFileName(site_name, sat_name, date_start, date_end)
 
     shoreline_dir_path = os.path.join(median_dir_path, 'shorelines', shoreline_folder)
     if not os.path.exists(shoreline_dir_path):
@@ -348,10 +346,10 @@ def adjust_detection_optical(image_ms, cloud_mask, image_labels,
     if not skip_image:
 
         if pansharpen:
-            jpeg_file_name = sat_name + '_PS_detection_S' + date_start + '_E' + date_end + '.jpg'
-        else:
-            jpeg_file_name = sat_name + '_detection_S' + date_start + '_E' + date_end + '.jpg'
-        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
+            sat_name += '_PS_'
+        jpeg_type = 'detection'
+        jpeg_file_name = jpegFileName(jpeg_type, sat_name, date_start,  date_end)
+        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', jpeg_type)
         fig.savefig(os.path.join(jpeg_file_path, jpeg_file_name), dpi=150)
 
     plt.close()
@@ -457,13 +455,13 @@ def extract_shoreline_sar(metadata, settings, ref=False):
         shoreline, _, _ = adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=ref)
 
         gdf = NOC_tools.output_to_gdf(shoreline, metadata)
-        file_string = f'{site_name}_shoreline_{inputs["polarisation"]}' + \
-                      f'_S{date_start}_E{date_end}.geojson'
+        shoreline_file_name = geojsonFileName(site_name, sat_name, date_start, date_end)
+
         if ~gdf.empty:
             gdf.crs = {'init':'epsg:'+str(settings['output_epsg'])} # set layer projection
             # save GEOJSON layer to file
             gdf.to_file(os.path.join(inputs['median_dir_path'], 'shorelines', 'sar',
-                                     file_string),
+                                     shoreline_file_name),
                                      driver='GeoJSON', encoding='utf-8')
 
             printSuccess('shoreline saved')
@@ -558,13 +556,7 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
     bins = np.arange(np.nanmin(vec_pol), np.nanmax(vec_pol) + bin_width, bin_width)
     ax4.hist(vec_pol, bins=bins, density=True, color=colour, label=polarisation)
 
-#    if ref:
-#        t_sar = filters.threshold_otsu(image_pol)
-#    else:
-#        t_sar = inputs['reference_threshold']
-
     t_sar = filters.threshold_otsu(image_pol)
-
     contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
     # process the water contours into a shoreline
@@ -667,9 +659,11 @@ def adjust_detection_sar(sar_image, image_ref_buffer, settings, ref=False):
                 plt.waitforbuttonpress()
 
     if not ref or not skip_image:
-        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', 'detection')
-        fig.savefig(os.path.join(jpeg_file_path, sat_name + '_detection_S' + date_start + \
-                                 '_E' + data_end + '.jpg'), dpi=150)
+
+        jpeg_type = 'detection'
+        jpeg_file_name = jpegFileName(jpeg_type, sat_name, date_start, data_end)
+        jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', jpeg_type)
+        fig.savefig(os.path.join(jpeg_file_path,jpeg_file_name), dpi=150)
 
     return shoreline, t_sar, skip_image
 
