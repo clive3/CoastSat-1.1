@@ -419,7 +419,7 @@ def extract_shoreline_sar(metadata, settings, ref=False):
 
     median_dir_path = inputs['median_dir_path']
     sat_name = inputs['sat_name']
-    site_name = inputs['polarisation']
+    site_name = inputs['site_name']
     pixel_size = inputs['pixel_size']
     date_start = inputs['dates'][0]
     date_end = inputs['dates'][1]
