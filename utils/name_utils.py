@@ -6,6 +6,7 @@ Created on Tue Jul 16 09:35:46 2019coast.coast_params
 """
 import os
 
+
 def geotifFileName(site_name, date_start, date_end, band_key):
 
     if band_key  is None:
@@ -40,7 +41,7 @@ def jpegFilePath(settings, jpeg_type, sat_name, date_start, date_end):
 
 def geojsonFilePath(settings, batch=False):
 
-    median_dir_path = settings['median_dir_path']
+    results_dir_path = settings['results_dir_path']
     sat_name = settings['sat_name']
     site_name = settings['site_name']
     date_start = settings['dates'][0]
@@ -54,15 +55,12 @@ def geojsonFilePath(settings, batch=False):
         if pansharpen:
             data_type += '_PS'
     file_name = site_name + '_shoreline_' + data_type + '_' + \
-                    date_start.replace('-', '') + '_' + date_end.replace('-', '') + '.geojson'
+                date_start.replace('-', '') + '_' + date_end.replace('-', '') + '.geojson'
 
     if batch:
-        dir_name = 'batch_shorelines'
-        head, tail = os.path.split(median_dir_path)
-        shoreline_dir_path = os.path.join(head, dir_name)
+        shoreline_dir_path = os.path.join(results_dir_path, 'batch_shorelines')
     else:
-        dir_name = 'shorelines'
-        shoreline_dir_path = os.path.join(median_dir_path, dir_name)
+        shoreline_dir_path = os.path.join(results_dir_path, 'shorelines')
 
     if not os.path.exists(shoreline_dir_path):
         os.makedirs(shoreline_dir_path)

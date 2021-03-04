@@ -7,14 +7,28 @@ from coastsat import NOC_download, NOC_preprocess, NOC_classify, NOC_tools
 from utils.print_utils import printProgress, printSuccess, printWarning, printError
 from utils.name_utils import jpegFilePath, geojsonFilePath, pickleDumpName
 
-
 def extract_shoreline_optical(settings, ref=False, batch=False):
 
     metadata = NOC_download.load_metadata(settings)
 
-    classes = settings['classes']
-    median_dir_path = settings['median_dir_path']
+    ref_date_start = date.fromisoformat(settings['date_range'][0])
+    ref_date_end = date.fromisoformat(settings['date_range'][1])
+    meta_date_start = date.fromisoformat(settings['dates'][0])
+    meta_date_end = date.fromisoformat(settings['dates'][1])
+
+    if batch:
+        if not (meta_date_start >= ref_date_start and meta_date_end <= ref_date_end):
+            raise Exception
+        if 'site_list' in settings.keys():
+            site_name = settings['site_name']
+            site_list = settings['site_list']
+            if site_name not in site_list:
+                raise Exception
+
     sat_name = settings['sat_name']
+    median_dir_path = settings['median_dir_path']
+
+    classes = settings['classes']
     output_epsg = settings['output_epsg']
     band_dict = settings['bands'][sat_name]
     first_key = next(iter(band_dict))
@@ -689,8 +703,8 @@ def find_reference_shoreline(settings):
     median_dir_path = settings['median_dir_path']
     sat_name = settings['sat_name']
     site_name = settings['site_name']
-    ref_date_start = date.fromisoformat(settings['dates'][0])
-    ref_date_end = date.fromisoformat(settings['dates'][1])
+    ref_date_start = date.fromisoformat(settings['date_range'][0])
+    ref_date_end = date.fromisoformat(settings['date_range'][1])
 
     models_file_path = os.path.join(os.getcwd(), 'classification', 'models')
 
@@ -741,10 +755,14 @@ def find_reference_shoreline(settings):
     file_path_list = []
     for file_index, file_name in enumerate(file_names):
 
-        meta_date_start = date.fromisoformat(metadata_sat['date_start'][file_index])
-        meta_date_end = date.fromisoformat(metadata_sat['date_end'][file_index])
+        date_start = metadata_sat['date_start'][file_index]
+        date_end = metadata_sat['date_end'][file_index]
+        meta_date_start = date.fromisoformat(date_start)
+        meta_date_end = date.fromisoformat(date_end)
 
         if meta_date_start >= ref_date_start and meta_date_end <= ref_date_end:
+
+            settings['dates'] = [date_start, date_end]
 
             if sat_name == 'S1':
                 file_path = os.path.join(median_dir_path, sat_name, file_name)
