@@ -13,13 +13,13 @@ def preprocess_sar(file_name):
     return sar_stack, georef
 
 
-def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR_index=5, ref=False):
+def preprocess_optical(settings, file_paths, pansharpen=False, SWIR_band='', SWIR_index=5, ref=False):
 
-    sat_name = settings['inputs']['sat_name']
+    sat_name = settings['sat_name']
     cloud_mask_issue = settings['cloud_mask_issue']
 
     # read 10m bands (R,G,B,NIR)
-    file_path_10 = file_path[0]
+    file_path_10 = file_paths[0]
 
     data = gdal.Open(file_path_10, gdal.GA_ReadOnly)
     georef = np.array(data.GetGeoTransform())
@@ -40,7 +40,7 @@ def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR
     ncols = image_10.shape[1]
 
     # read 20m bands
-    file_path_20 = file_path[1]
+    file_path_20 = file_paths[1]
 
     data = gdal.Open(file_path_20, gdal.GA_ReadOnly)
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]
@@ -64,7 +64,7 @@ def preprocess_optical(file_path, settings, pansharpen=False, SWIR_band='', SWIR
     image_ms = np.append(image_10, image_SWIR, axis=2)
 
     # create cloud mask using 60m QA band (not as good as Landsat cloud cover)
-    file_path_60 = file_path[2]
+    file_path_60 = file_paths[2]
 
     data = gdal.Open(file_path_60, gdal.GA_ReadOnly)
     bands = [data.GetRasterBand(k + 1).ReadAsArray() for k in range(data.RasterCount)]

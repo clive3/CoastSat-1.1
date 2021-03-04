@@ -4,7 +4,7 @@ Created on Tue Jul 16 09:35:46 2019coast.coast_params
 
 @author: cneil
 """
-
+import os
 
 def geotifFileName(site_name, date_start, date_end, band_key):
 
@@ -23,16 +23,50 @@ def pickleDumpName(pickle_type, site_name, sat_name):
     return file_name
 
 
-def jpegFileName(jpeg_type, sat_name, date_start, date_end):
+def jpegFilePath(settings, jpeg_type, sat_name, date_start, date_end):
+
+    median_dir_path = settings['median_dir_path']
+    # create a folder to store the .jpg images showing the detection
+    jpeg_file_path = os.path.join(median_dir_path, 'jpg_files', jpeg_type)
+    if not os.path.exists(jpeg_file_path):
+        os.makedirs(jpeg_file_path)
 
     file_name = sat_name + '_' + jpeg_type + '_' + date_start.replace('-','') +'_'+ date_end.replace('-','') + '.jpg'
 
-    return file_name
+    jpeg_file_path = os.path.join(jpeg_file_path, file_name)
+
+    return jpeg_file_path
 
 
-def geojsonFileName(site_name, sat_name, date_start, date_end):
+def geojsonFilePath(settings, batch=False):
 
-    file_name = site_name + '_shoreline_' + sat_name +'_' +\
-                date_start.replace('-','') +'_'+ date_end.replace('-','') + '.geojson'
+    median_dir_path = settings['median_dir_path']
+    sat_name = settings['sat_name']
+    site_name = settings['site_name']
+    date_start = settings['dates'][0]
+    date_end = settings['dates'][1]
 
-    return file_name
+    if sat_name == 'S1':
+        data_type = settings['polarisation']
+    else:
+        data_type = sat_name
+        pansharpen = settings['pansharpen']
+        if pansharpen:
+            data_type += '_PS'
+    file_name = site_name + '_shoreline_' + data_type + '_' + \
+                    date_start.replace('-', '') + '_' + date_end.replace('-', '') + '.geojson'
+
+    if batch:
+        dir_name = 'batch_shorelines'
+        head, tail = os.path.split(median_dir_path)
+        shoreline_dir_path = os.path.join(head, dir_name)
+    else:
+        dir_name = 'shorelines'
+        shoreline_dir_path = os.path.join(median_dir_path, dir_name)
+
+    if not os.path.exists(shoreline_dir_path):
+        os.makedirs(shoreline_dir_path)
+
+    file_path = os.path.join(shoreline_dir_path, file_name)
+
+    return file_path
