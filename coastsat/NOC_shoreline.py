@@ -890,6 +890,12 @@ def create_shoreline_buffer(settings, im_shape, ref=False):
 
     if reference_shoreline.any():
 
+        if ref:
+            sat_name = 'S1'
+        else:
+            sat_name = settings['sat_name']
+        printProgress(f'{sat_name} reference shoreline loaded')
+
         # convert reference shoreline to pixel coordinates
         ref_sl = settings['reference_shoreline']
 
@@ -922,32 +928,40 @@ def create_shoreline_buffer(settings, im_shape, ref=False):
 
 def create_mndwi_buffer(settings, im_shape):
 
-    # convert reference shoreline to pixel coordinates
-    ref_sl = settings['reference_shoreline']
-    image_epsg = int(settings['image_epsg'])
-    output_epsg = int(settings['output_epsg'])
-    georef = settings['georef']
+    reference_shoreline = load_reference_shoreline(settings)
 
-    ref_sl_conv = SDS_tools.convert_epsg(ref_sl, output_epsg, image_epsg)[:, :-1]
-    ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
-    ref_sl_pix_rounded = np.round(ref_sl_pix).astype(int)
+    if reference_shoreline.any():
 
-    # make sure that the pixel coordinates of the reference shoreline are inside the image
-    idx_row = np.logical_and(ref_sl_pix_rounded[:,0] > 0, ref_sl_pix_rounded[:,0] < im_shape[1])
-    idx_col = np.logical_and(ref_sl_pix_rounded[:,1] > 0, ref_sl_pix_rounded[:,1] < im_shape[0])
-    idx_inside = np.logical_and(idx_row, idx_col)
-    ref_sl_pix_rounded = ref_sl_pix_rounded[idx_inside,:]
+        # convert reference shoreline to pixel coordinates
+        ref_sl = reference_shoreline
+        image_epsg = int(settings['image_epsg'])
+        output_epsg = int(settings['output_epsg'])
+        georef = settings['georef']
 
-    # create binary image of the reference shoreline (1 where the shoreline is 0 otherwise)
-    im_binary = np.zeros(im_shape)
-    for j in range(len(ref_sl_pix_rounded)):
-        im_binary[ref_sl_pix_rounded[j,1], ref_sl_pix_rounded[j,0]] = 1
-    im_binary = im_binary.astype(bool)
+        ref_sl_conv = SDS_tools.convert_epsg(ref_sl, output_epsg, image_epsg)[:, :-1]
+        ref_sl_pix = SDS_tools.convert_world2pix(ref_sl_conv, georef)
+        ref_sl_pix_rounded = np.round(ref_sl_pix).astype(int)
 
-    # dilate the binary image to create a buffer around the reference shoreline
-    max_dist_ref_pixels = 100
-    se = morphology.disk(max_dist_ref_pixels)
-    im_buffer = morphology.binary_dilation(im_binary, se)
+        # make sure that the pixel coordinates of the reference shoreline are inside the image
+        idx_row = np.logical_and(ref_sl_pix_rounded[:,0] > 0, ref_sl_pix_rounded[:,0] < im_shape[1])
+        idx_col = np.logical_and(ref_sl_pix_rounded[:,1] > 0, ref_sl_pix_rounded[:,1] < im_shape[0])
+        idx_inside = np.logical_and(idx_row, idx_col)
+        ref_sl_pix_rounded = ref_sl_pix_rounded[idx_inside,:]
+
+        # create binary image of the reference shoreline (1 where the shoreline is 0 otherwise)
+        im_binary = np.zeros(im_shape)
+        for j in range(len(ref_sl_pix_rounded)):
+            im_binary[ref_sl_pix_rounded[j,1], ref_sl_pix_rounded[j,0]] = 1
+        im_binary = im_binary.astype(bool)
+
+        # dilate the binary image to create a buffer around the reference shoreline
+        max_dist_ref_pixels = 100
+        se = morphology.disk(max_dist_ref_pixels)
+        im_buffer = morphology.binary_dilation(im_binary, se)
+
+    else:
+
+        im_buffer = np.ones(im_shape).astype(bool)
 
     return im_buffer
 
@@ -968,8 +982,6 @@ def load_reference_shoreline(settings, ref=False):
 
         with open(os.path.join(median_dir_path, ref_shoreline_file_name), 'rb') as f:
             ref_shoreline = pickle.load(f)
-
-        printProgress(f'{sat_name} reference shoreline loaded')
         reference_shoreline = ref_shoreline
     else:
         printWarning('no reference shoreline found')

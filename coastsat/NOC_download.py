@@ -49,8 +49,8 @@ def retrieve_median_sar(settings):
     epsg = int(gee_metadata['bands'][0]['crs'][5:])
 
     median_filename = geotifFileName(site_name, date_start, date_end, None)
-    download_median_image(median_image, ee.Number(pixel_size),
-                          settings['polygon'], sar_dir_path)
+    download_GEE_image(median_image, ee.Number(pixel_size),
+                       settings['polygon'], sar_dir_path)
 
     # rename the file as the image is downloaded as 'data.tif'
     # locate download
@@ -79,6 +79,92 @@ def retrieve_median_sar(settings):
 
     printProgress('GEE connection closed')
     printSuccess('median image downloaded')
+
+def retrieve_sar(settings):
+
+    # initialise connection with GEE server
+    ee.Initialize()
+    printProgress('connected to GEE')
+
+    pixel_size = settings['pixel_size']
+    sat_name = settings['sat_name']
+    site_name = settings['site_name']
+    median_dir_path = settings['median_dir_path']
+    date_start = settings['dates'][0]
+    date_end = settings['dates'][1]
+    polygon = ee.Geometry.Polygon(settings['polygon'])
+
+    if date_start > date_end:
+        printError('you cannot have end date before the start date')
+
+    # create a new directories as required
+    head, tail = os.path.split(median_dir_path)
+    images_dir_path = os.path.join(head, 'images')
+    if not os.path.exists(images_dir_path):
+        os.makedirs(images_dir_path)
+    sar_dir_path = os.path.join(images_dir_path, sat_name)
+    if not os.path.exists(sar_dir_path):
+        os.makedirs(sar_dir_path)
+    meta_dir_path = os.path.join(images_dir_path, 'meta')
+    if not os.path.exists(meta_dir_path):
+        os.makedirs(meta_dir_path)
+
+    sar_images_collection = ee.ImageCollection("COPERNICUS/S1_GRD") \
+                   .filterBounds(polygon) \
+                   .filterDate(date_start, date_end) \
+                   .filter(ee.Filter.eq('instrumentMode', 'IW'))
+
+    sar_images_list = sar_images_collection.getInfo().get('features')
+    number_images = len(sar_images_list)
+
+    printProgress(f'downloading {number_images} sar images')
+
+    for image_index in range(len(sar_images_list)):
+
+        image_metadata = sar_images_list[image_index]
+        epsg = int(image_metadata['bands'][0]['crs'][5:])
+
+        # get time of acquisition (UNIX time) and convert to datetime
+        image_time = image_metadata['properties']['system:time_start']
+        image_timestamp = datetime.fromtimestamp(image_time / 1000, tz=pytz.utc)
+        image_dt = image_timestamp.strftime('%Y%m%dT%H%M%S')
+
+        sar_image = ee.Image(image_metadata['id'])
+
+        image_filename = 'S1' + image_metadata['properties']['platform_number'] + \
+                         '_' + image_metadata['properties']['orbitProperties_pass'][:3] + \
+                         '_' + image_dt + '.tif'
+
+        download_GEE_image(sar_image, ee.Number(pixel_size),
+                           settings['polygon'], sar_dir_path)
+
+        # rename the file as the image is downloaded as 'data.tif'
+        # locate download
+        local_data = sar_dir_path + '\\data.tif'
+        local_file_path = os.path.join(sar_dir_path, image_filename)
+
+        try:
+            os.rename(local_data, local_file_path)
+        except:  # overwrite if already exists
+            os.remove(local_file_path)
+            os.rename(local_data, local_file_path)
+
+        # metadata for .txt file
+        txt_file_name = image_filename.replace('tif', 'txt')
+        metadata_dict = {'file_name': image_filename,
+                         'epsg': epsg,
+                         'date_start': date_start,
+                         'date_end': date_end,
+                         }
+
+        # write metadata as text file
+        with open(os.path.join(meta_dir_path, txt_file_name), 'w') as f:
+            for key in metadata_dict.keys():
+                f.write('%s\t%s\n' % (key, metadata_dict[key]))
+
+    printProgress('GEE connection closed')
+    printSuccess('images downloaded')
+
 
 def retrieve_median_optical(settings):
 
@@ -137,8 +223,8 @@ def retrieve_median_optical(settings):
         local_file_path = os.path.join(band_file_path, image_file_name)
 
         printProgress(f'\t"{band_key}" bands:\t{band_names}')
-        download_median_image(median_image, ee.Number(band_scale),
-                               ee.Geometry.Polygon(polygon), band_file_path, bands=band_names)
+        download_GEE_image(median_image, ee.Number(band_scale),
+                           ee.Geometry.Polygon(polygon), band_file_path, bands=band_names)
 
         try:
             os.rename(local_data, local_file_path)
@@ -474,8 +560,17 @@ def get_median_image_optical(collection, settings):
             start = datetime(2015, 6, 23)
             end = datetime(2019, 1, 28)
 
+            def time_in_range(start, end, x):
+                if start <= end:
+                    return start <= x <= end
+                else:
+                    return start <= x or x <= end
+
             # Is start date within pre S2_SR period?
             if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
+
+
+
                 # Add cloud shadow component bands.
                 image_cloud_shadow = add_shadow_bands(image_cloud)
                 # Combine cloud and shadow mask, set cloud and shadow as value 1, else 0.
@@ -519,7 +614,7 @@ def get_median_image_optical(collection, settings):
         return image_median, median_number
 
 
-def download_median_image(image, scale, region, filepath, bands=['VV','VH']):
+def download_GEE_image(image, scale, region, filepath, bands=['VV', 'VH']):
 
     path = image.getDownloadURL({
         'name': 'data',
@@ -628,6 +723,13 @@ def load_metadata(settings):
 
 def get_S2_SR_cloud_col(settings):
 
+    def time_in_range(start, end, x):
+        if start <= end:
+            return start <= x <= end
+        else:
+            return start <= x or x <= end
+
+
     polygon = ee.Geometry.Polygon(settings['polygon'])
     date_start = settings['dates'][0]
     date_end = settings['dates'][1]
@@ -673,26 +775,3 @@ def get_S2_SR_cloud_col(settings):
         })
     })), median_number
 
-def time_in_range(start, end, x):
-    """
-    Return true if x is in the date range [start, end]
-
-    Parameters
-    ----------
-    start : datetime(x,y,z)
-        Date time format start
-    end : datetime(x,y,z)
-        Date time format end
-    x : datetime(x,y,z)
-        Is Date time format within start / end
-
-    Returns
-    -------
-    TYPE
-        True/False.
-    """
-
-    if start <= end:
-        return start <= x <= end
-    else:
-        return start <= x or x <= end
