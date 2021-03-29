@@ -558,7 +558,7 @@ def get_median_image_optical(collection, settings):
             user_end = date_start.split("-")
             # Period of Sentinel 2 data before Surface reflectance data is available
             start = datetime(2015, 6, 23)
-            end = datetime(2019, 1, 28)
+            end = datetime(2021, 1, 28)
 
             def time_in_range(start, end, x):
                 if start <= end:
@@ -568,8 +568,6 @@ def get_median_image_optical(collection, settings):
 
             # Is start date within pre S2_SR period?
             if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
-
-
 
                 # Add cloud shadow component bands.
                 image_cloud_shadow = add_shadow_bands(image_cloud)
@@ -614,7 +612,7 @@ def get_median_image_optical(collection, settings):
         return image_median, median_number
 
 
-def download_GEE_image(image, scale, region, filepath, bands=['VV', 'VH']):
+def download_GEE_image(image, scale, region, file_path, bands=['VV', 'VH']):
 
     path = image.getDownloadURL({
         'name': 'data',
@@ -626,7 +624,7 @@ def download_GEE_image(image, scale, region, filepath, bands=['VV', 'VH']):
 
     local_zip, headers = urlretrieve(path)
     with zipfile.ZipFile(local_zip) as local_zipfile:
-        return local_zipfile.extractall(path=str(filepath))
+        return local_zipfile.extractall(path=str(file_path))
 
 
 def save_metadata(settings):
@@ -739,12 +737,13 @@ def get_S2_SR_cloud_col(settings):
     user_end = date_start.split("-")
     # Period of Sentinel 2 data before Surface reflectance data is available
     start = datetime(2015, 6, 23)
-    end = datetime(2019, 1, 28)
+    end = datetime(2021, 1, 28)
 
     # Is end date within pre S2_SR period?
     if time_in_range(start, end, datetime(int(user_end[0]), int(user_end[1]), int(user_end[2]))) == False:
         # Import and filter S2 SR.
-        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR')
+
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2')
                      .filterBounds(polygon)
                      .filterDate(date_start, date_end)
                      .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
@@ -765,13 +764,16 @@ def get_S2_SR_cloud_col(settings):
     image_list = s2_sr_col.toList(500)
     median_number = len(image_list.getInfo())
 
-    # Join the filtered s2cloudless collection to the SR collection by the 'system:index' property.
-    return ee.ImageCollection(ee.Join.saveFirst('s2cloudless').apply(**{
+    median_collection = ee.ImageCollection(ee.Join.saveFirst('s2cloudless').apply(**{
         'primary': s2_sr_col,
         'secondary': s2_cloudless_col,
         'condition': ee.Filter.equals(**{
             'leftField': 'system:index',
             'rightField': 'system:index'
         })
-    })), median_number
+    }))
+
+
+    # Join the filtered s2cloudless collection to the SR collection by the 'system:index' property.
+    return median_collection, median_number
 

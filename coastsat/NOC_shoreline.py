@@ -1,4 +1,4 @@
-from skimage.filters import gaussian
+from skimage.filters import gaussian, threshold_otsu
 from datetime import date
 
 from coastsat.SDS_shoreline import *
@@ -19,11 +19,6 @@ def extract_shoreline_optical(settings, ref=False, batch=False):
     if batch:
         if not (meta_date_start >= ref_date_start and meta_date_end <= ref_date_end):
             raise Exception
-        if 'site_list' in settings.keys():
-            site_name = settings['site_name']
-            site_list = settings['site_list']
-            if site_name not in site_list:
-                raise Exception
 
     sat_name = settings['sat_name']
     median_dir_path = settings['median_dir_path']
@@ -147,6 +142,13 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
     output_epsg = settings['output_epsg']
     georef = settings['georef']
 
+    if ref:
+        date_start = settings['date_range'][0]
+        date_end = settings['date_range'][1]
+    else:
+        date_start = settings['dates'][0]
+        date_end = settings['dates'][1]
+
     image_RGB = SDS_preprocess.rescale_image_intensity(image_ms[:, :, [2, 1, 0]], cloud_mask, 99.9)
     image_classified = np.ones(image_RGB.shape)
 
@@ -165,7 +167,7 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
         skip_image = False
         t_mndwi = settings['reference_threshold']
         contours_mndwi = measure.find_contours(image_mndwi_buffered, level=t_mndwi, mask=image_ref_buffer)
-        shoreline = process_sar_shoreline(settings, contours_mndwi)
+        shoreline = create_shoreline(settings, contours_mndwi)
         printProgress('shoreline extracted')
     else:
         ##########################################################################
@@ -227,7 +229,6 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
         # plot image 2 (classification)
         ax2.imshow(image_class)
         ax2.axis('off')
-
         ax2.set_title(date_start + ' to ' + date_end, fontweight='bold', fontsize=12)
 
         # plot image 3 (MNDWI)
@@ -243,6 +244,9 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
         ax4.set(ylabel='pixels', yticklabels=[], xlim=[-1, 1])
 
         for key in class_keys:
+            if key == 'water':
+                continue
+
             class_label = classes[key][0]
             class_colour = classes[key][1]
             class_pixels = mndwi_pixels[class_label]
@@ -258,9 +262,16 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
                 bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
                 ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
 
+        ## lazy way of making water appear at the front
+        class_label = classes['water'][0]
+        class_colour = classes['water'][1]
+        class_pixels = mndwi_pixels[class_label]
+        bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
+        ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
+
         if ref:
-            reference_threshold = 0
             contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
+            reference_threshold = t_mndwi
         else:
             reference_threshold = settings['reference_threshold']
             t_mndwi = reference_threshold
@@ -391,14 +402,15 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     nrows = cloud_mask.shape[0]
     ncols = cloud_mask.shape[1]
 
-    # calculate Normalized Difference Modified Water Index (SWIR - G)
-    image_mwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
+    # calculate Modified Normalized Difference Water Index
+    image_mndwi = SDS_tools.nd_index(image_ms[:, :, 4], image_ms[:, :, 1], cloud_mask)
 
-    # calculate Normalized Difference Modified Water Index (NIR - G)
-    image_wi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
+    # calculate Normalized Difference Modified Water Index
+    image_ndwi = SDS_tools.nd_index(image_ms[:, :, 3], image_ms[:, :, 1], cloud_mask)
+
     # stack indices together
-    image_ind = np.stack((image_wi, image_mwi), axis=-1)
-    vec_ind = image_ind.reshape(nrows*ncols, 2)
+    image_indices = np.stack((image_ndwi, image_mndwi), axis=-1)
+    vec_indices = image_indices.reshape(nrows*ncols, 2)
 
     # reshape labels into vectors
 #    vec_land1 = image_labels[:, :, 0].reshape(ncols * nrows)
@@ -408,11 +420,14 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     vec_all_land = np.logical_or(vec_land2, vec_land3)
 
     vec_water = image_labels[:, :, 4].reshape(ncols * nrows)
-    vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
 
+    vec_image_ref_buffer = ref_shoreline_buffer.reshape(ncols * nrows)
     # select land and water pixels that are within the buffer
-    int_land = vec_ind[np.logical_and(vec_image_ref_buffer,vec_all_land),:]
-    int_sea = vec_ind[np.logical_and(vec_image_ref_buffer,vec_water),:]
+    int_land = vec_indices[np.logical_and(vec_image_ref_buffer,vec_all_land),:]
+    int_sea = vec_indices[np.logical_and(vec_image_ref_buffer,vec_water),:]
+    
+    int_land = vec_indices[vec_all_land]
+    int_sea = vec_indices[vec_water]
 
     # make sure both classes have the same number of pixels before thresholding
     if len(int_land) > 0 and len(int_sea) > 0:
@@ -420,16 +435,17 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
             int_land = int_land[np.random.choice(int_land.shape[0],int_sea.shape[0], replace=False),:]
         else:
             int_sea = int_sea[np.random.choice(int_sea.shape[0],int_land.shape[0], replace=False),:]
+    
 
     # threshold the sand/water intensities
-    int_all = np.append(int_land,int_sea, axis=0)
+    int_all = np.append(int_land, int_sea, axis=0)
     int_all = int_all[~np.isnan(int_all)]
-    t_mwi = filters.threshold_otsu(int_all)
+    t_mwi = threshold_otsu(int_all)
 
     # find contour with MS algorithm
-    image_mwi_buffered = np.copy(image_mwi)
-    image_mwi_buffered[~ref_shoreline_buffer] = np.nan
-    contours_mwi = measure.find_contours(image_mwi_buffered, level=t_mwi, mask=ref_shoreline_buffer)
+    image_mdwi_buffered = np.copy(image_mndwi)
+    image_mdwi_buffered[~ref_shoreline_buffer] = np.nan
+    contours_mwi = measure.find_contours(image_mdwi_buffered, level=t_mwi, mask=ref_shoreline_buffer)
     # remove contour points that are NaNs (around clouds)
     contours_mwi = process_contours(contours_mwi)
 
@@ -524,7 +540,7 @@ def adjust_detection_sar(settings, sar_image, image_ref_buffer, ref=False, batch
         skip_image = False
         t_sar = settings['reference_threshold']
         contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
-        shoreline = process_sar_shoreline(settings, contours_sar)
+        shoreline = create_shoreline(settings, contours_sar)
 
     else:
 
@@ -591,7 +607,7 @@ def adjust_detection_sar(settings, sar_image, image_ref_buffer, ref=False, batch
         contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
         # process the water contours into a shoreline
-        shoreline = process_sar_shoreline(settings, contours_sar)
+        shoreline = create_shoreline(settings, contours_sar)
 
         # convert shoreline to pixels
         if len(shoreline) > 0:
@@ -631,7 +647,7 @@ def adjust_detection_sar(settings, sar_image, image_ref_buffer, ref=False, batch
                 # map contours with new threshold
                 contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
                 # process the water contours into a shoreline
-                shoreline = process_sar_shoreline(settings, contours_sar)
+                shoreline = create_shoreline(settings, contours_sar)
 
                 if len(shoreline) > 0:
                     sl_pix = SDS_tools.convert_world2pix(SDS_tools.convert_epsg(shoreline,
@@ -850,7 +866,7 @@ def find_reference_shoreline(settings):
     settings['reference_threshold'] = reference_threshold
 
 
-def process_sar_shoreline(settings, contours):
+def create_shoreline(settings, contours):
 
     image_epsg = settings['image_epsg']
     georef = settings['georef']
