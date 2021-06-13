@@ -121,7 +121,7 @@ def extract_shoreline_optical(settings, ref=False, batch=False):
             gdf.crs = {'init': 'epsg:' + str(output_epsg)}
             gdf.to_file(shoreline_file_path, driver='GeoJSON', encoding='utf-8')
 
-            printSuccess('shoreline saved')
+            printSuccess(f'shoreline saved {shoreline_file_path}')
         else:
             printWarning('no shorelines to be seen ...')
 
@@ -135,8 +135,6 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
 
     sat_name = settings['sat_name']
     site_name = settings['site_name']
-    date_start = settings['dates'][0]
-    date_end = settings['dates'][1]
     pansharpen = settings['pansharpen']
     image_epsg = settings['image_epsg']
     output_epsg = settings['output_epsg']
@@ -272,6 +270,7 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
         if ref:
             contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
             reference_threshold = t_mndwi
+
         else:
             reference_threshold = settings['reference_threshold']
             t_mndwi = reference_threshold
@@ -446,6 +445,7 @@ def find_contours_optical(image_ms, image_labels, cloud_mask, ref_shoreline_buff
     image_mdwi_buffered = np.copy(image_mndwi)
     image_mdwi_buffered[~ref_shoreline_buffer] = np.nan
     contours_mwi = measure.find_contours(image_mdwi_buffered, level=t_mwi, mask=ref_shoreline_buffer)
+
     # remove contour points that are NaNs (around clouds)
     contours_mwi = process_contours(contours_mwi)
 
@@ -526,8 +526,8 @@ def adjust_detection_sar(settings, sar_image, image_ref_buffer, ref=False, batch
     else:
         printError(f'select SAR band correctly: {polarisation}')
 
+    image_pol = np.copy(sar_image[:,:,0])
 
-    image_pol = np.copy(sar_image[:,:,band_index])
     vec_shape = (sar_image.shape[0] * sar_image.shape[1])
     vec_pol = image_pol.reshape(vec_shape)
 
@@ -604,6 +604,7 @@ def adjust_detection_sar(settings, sar_image, image_ref_buffer, ref=False, batch
         else:
             reference_threshold = settings['reference_threshold']
             t_sar = reference_threshold
+
         contours_sar = measure.find_contours(image_pol, level=t_sar, mask=image_ref_buffer)
 
         # process the water contours into a shoreline
@@ -776,6 +777,9 @@ def find_reference_shoreline(settings):
         meta_date_start = date.fromisoformat(date_start)
         meta_date_end = date.fromisoformat(date_end)
 
+        printProgress(f'processing dates: ({meta_date_start}, {meta_date_end})')
+
+        georef = None
         if meta_date_start >= ref_date_start and meta_date_end <= ref_date_end:
 
             settings['dates'] = [date_start, date_end]
@@ -786,6 +790,7 @@ def find_reference_shoreline(settings):
 
                 sar_image, georef = NOC_preprocess.preprocess_sar(file_path)
                 image_shape = (sar_image.shape[0], sar_image.shape[1], len(file_path_list))
+
             else:
                 file_paths = []
                 for band_key in band_dict:
@@ -796,6 +801,10 @@ def find_reference_shoreline(settings):
                 optical_image, georef = NOC_preprocess.preprocess_sar(file_paths[0])
                 image_shape = (optical_image.shape[0], optical_image.shape[1],
                                optical_image.shape[2]+1, len(file_path_list))
+
+    if not georef.any():
+        printError(f'could not create reference shoreline possibly wrong date range or epsg code given')
+
     settings['georef'] = georef
 
     threshold_images = np.ndarray(image_shape)
@@ -824,6 +833,7 @@ def find_reference_shoreline(settings):
     if sat_name == 'S1':
         image_ref_buffer = np.ones(buffer_shape, dtype=np.bool)
         threshold_images = gaussian(threshold_images, sigma=sigma, mode='reflect')
+
         reference_shoreline, reference_threshold, skip_image = \
                                     adjust_detection_sar(settings, threshold_images, image_ref_buffer,
                                                          ref=True)
