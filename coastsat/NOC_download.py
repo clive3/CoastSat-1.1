@@ -42,19 +42,15 @@ def retrieve_median_sar(settings):
 
     printProgress(f'found {number_images} images')
 
-    median_image = median_images_collection.median()
-
     printProgress('downloading median image')
-    gee_metadata = median_image.getInfo()
-    epsg = int(gee_metadata['bands'][0]['crs'][5:])
-
-    median_filename = geotifFileName(site_name, date_start, date_end, None)
+    median_image = median_images_collection.median()
     download_GEE_image(median_image, ee.Number(pixel_size),
                        settings['polygon'], sar_dir_path)
 
     # rename the file as the image is downloaded as 'data.tif'
     # locate download
     local_data = sar_dir_path + '\\data.tif'
+    median_filename = geotifFileName(site_name, date_start, date_end, None)
     local_file_path = os.path.join(sar_dir_path, median_filename)
 
     try:
@@ -64,6 +60,8 @@ def retrieve_median_sar(settings):
         os.rename(local_data, local_file_path)
 
     printProgress('writing metadata')
+    gee_metadata = median_image.getInfo()
+    epsg = int(gee_metadata['bands'][0]['crs'][5:])
     # metadata for .txt file
     txt_file_name = median_filename.replace('tif', 'txt')
     metadata_dict = {'file_name': median_filename,
@@ -188,8 +186,12 @@ def retrieve_median_optical(settings):
 
     if sat_name == 'L8':
         GEE_collection = 'LANDSAT/LC08/C01/T1_TOA'
+    elif sat_name == 'L5':
+        GEE_collection = 'LANDSAT/LT05/C01/T1_TOA'
     elif sat_name == 'S2':
         GEE_collection = 'COPERNICUS/S2'
+    else:
+        printError(f'unknown satellite: {sat_name}')
 
     median_image, number_images = get_median_image_optical(GEE_collection, settings)
 
