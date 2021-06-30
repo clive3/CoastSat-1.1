@@ -1,9 +1,7 @@
-import os
-import pickle
 from datetime import datetime
 
 import ee
-import numpy
+
 import pytz
 
 from coastsat.SDS_classify import *

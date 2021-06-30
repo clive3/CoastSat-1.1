@@ -2,6 +2,7 @@ from skimage.filters import gaussian, threshold_otsu
 from datetime import date
 
 from coastsat.SDS_shoreline import *
+
 from coastsat import NOC_download, NOC_preprocess, NOC_classify, NOC_tools
 
 from utils.print_utils import printProgress, printSuccess, printWarning, printError
@@ -241,31 +242,27 @@ def adjust_detection_optical(settings, image_ms, cloud_mask, image_labels,
         ax4.yaxis.grid(color='w', linestyle='--', linewidth=0.5)
         ax4.set(ylabel='pixels', yticklabels=[], xlim=[-1, 1])
 
-        for key in class_keys:
-            if key == 'water':
-                continue
+        for class_display_order in range(len(classes)):
 
-            class_label = classes[key][0]
-            class_colour = classes[key][1]
-            class_pixels = mndwi_pixels[class_label]
+            for key in class_keys:
 
-            if key in ['white-water', 'sand']:
-                alpha = 0.75
-            elif key in['nature', 'urban', 'water']:
-                alpha = 0.9
-            else:
-                alpha = 1.0
+                if classes[key][2] == class_display_order:
+
+                    class_name = key
+                    class_label = classes[key][0]
+                    class_colour = classes[key][1]
+                    class_pixels = mndwi_pixels[class_label]
+
+                    if key in ['white-water', 'sand']:
+                        alpha = 0.75
+                    elif key in['nature', 'urban']:
+                        alpha = 0.9
+                    else:
+                        alpha = 1.0
 
             if len(class_pixels) > 0:
                 bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
-                ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
-
-        ## lazy way of making water appear at the front
-        class_label = classes['water'][0]
-        class_colour = classes['water'][1]
-        class_pixels = mndwi_pixels[class_label]
-        bins = np.arange(np.nanmin(class_pixels), np.nanmax(class_pixels) + bin_width, bin_width)
-        ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=key, alpha=alpha)
+                ax4.hist(class_pixels, bins=bins, density=True,  color=class_colour, label=class_name, alpha=alpha)
 
         if ref:
             contours_mndwi, t_mndwi = find_contours_optical(image_ms, image_labels, cloud_mask, image_ref_buffer)
@@ -741,7 +738,7 @@ def find_reference_shoreline(settings):
         else:
             printError(f'select SAR band correctly: {polarisation}')
 
-    else:
+    elif sat_name == 'S2':
 
         classes = settings['classes']
         band_dict = settings['bands'][sat_name]
@@ -756,6 +753,19 @@ def find_reference_shoreline(settings):
         classifier = joblib.load(os.path.join(models_file_path, 'NN_6classes_S2.pkl'))
         min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
         pansharpen = settings['pansharpen']
+
+    else:
+
+        classes = settings['classes']
+        band_dict = settings['bands'][sat_name]
+        first_key = next(iter(band_dict))
+        pixel_size = band_dict[first_key][1]
+        settings['pixel_size'] = pixel_size
+
+        classifier = joblib.load(os.path.join(models_file_path, 'NN_4classes_Landsat.pkl'))
+        min_beach_area_pixels = np.ceil(settings['min_beach_area'] / pixel_size ** 2)
+        pansharpen = settings['pansharpen']
+
 
     with open(os.path.join(median_dir_path, site_name + '_metadata_' + sat_name + '.pkl'), 'rb') as f:
         metadata_dict = pickle.load(f)
@@ -816,7 +826,7 @@ def find_reference_shoreline(settings):
             sar_image, _ = NOC_preprocess.preprocess_sar(file_paths)
             threshold_images[:, :, file_index] = sar_image[:,:,polarisation_band_index]
 
-        else:
+        elif sat_name == 'S2':
 
             printProgress(f'pansharpening SWIR - using {SWIR_band} - image {file_index+1}')
             optical_image, _, _, _, _, _ = \
@@ -826,6 +836,15 @@ def find_reference_shoreline(settings):
                                                   SWIR_index=SWIR_index,
                                                   ref=True)
             threshold_images[:, :, :, file_index] = optical_image
+
+        else:
+
+            ## NOT PROPERLY IMPLEMENTED YET
+
+            optical_image, _, _, _, _, _ = \
+                NOC_preprocess.preprocess_single(file_paths, sat_name, settings['cloud_mask_issue'])
+            threshold_images[:, :, :, file_index] = optical_image
+
 
     # calculate a buffer around the reference shoreline if it has already been generated
     buffer_shape = (threshold_images.shape[0], threshold_images.shape[1])
